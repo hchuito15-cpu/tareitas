@@ -2,6 +2,16 @@
 
 To-do list para Meni. Es una **PWA** (HTML + CSS + JS, sin compilar): en el Samsung se instala desde Chrome y queda como una app normal (ícono, pantalla completa, funciona sin internet).
 
+**App publicada:** <https://hchuito15-cpu.github.io/tareitas/>
+
+Para actualizarla después de hacer cambios:
+
+```bash
+git add -A && git commit -m "Cambios" && git push
+```
+
+En un minuto GitHub Pages publica la nueva versión y la app del teléfono la toma la próxima vez que se abra con internet.
+
 ## Probarla en la Mac (como si fuera un Galaxy S23)
 
 1. Abre la Terminal en esta carpeta y levanta el servidor:
