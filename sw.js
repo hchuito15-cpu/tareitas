@@ -1,5 +1,5 @@
 // Service worker: permite abrir Tareitas sin internet.
-const CACHE = 'tareitas-v2';
+const CACHE = 'tareitas-v3';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {

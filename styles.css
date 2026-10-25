@@ -258,7 +258,7 @@ svg { display: block; }
 }
 .sheet-body {
   flex: 1 1 auto; min-height: 0;
-  overflow-y: auto; overscroll-behavior: contain;
+  overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; /* solo se desplaza hacia abajo */
   padding: 4px 22px 22px;
   scrollbar-width: none;
 }
@@ -315,6 +315,8 @@ textarea.input { height: auto; min-height: 92px; padding: 14px 18px; line-height
   position: relative; height: 40px; margin: 2px 14px 0;
   touch-action: none; cursor: pointer;
   border-radius: 12px; outline-offset: 6px;
+  /* el círculo se mueve dentro de la barra sin ensanchar el formulario */
+  overflow: clip; overflow-clip-margin: 24px;
   --p: .5;
 }
 .prio-track {
@@ -485,7 +487,7 @@ textarea.input { height: auto; min-height: 92px; padding: 14px 18px; line-height
 
 .sch-scroll {
   flex: 1; min-height: 0;
-  overflow-y: auto; overscroll-behavior: contain;
+  overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
   padding: 10px 14px calc(40px + var(--safe-bottom));
   touch-action: pan-y;
   scrollbar-width: none;

@@ -199,6 +199,9 @@ function gesture(el, o) {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     if (o.when && !o.when(e)) return;
     const g = { dx: 0, dy: 0, vx: 0, vy: 0, active: false, pts: [{ x: e.clientX, y: e.clientY, t: e.timeStamp }] };
+    // Se dibuja como máximo una vez por cuadro de pantalla, aunque lleguen más eventos
+    let frame = 0;
+    const draw = () => { frame = 0; o.move(g); };
 
     const onMove = (ev) => {
       if (ev.pointerId !== e.pointerId) return;
@@ -216,12 +219,13 @@ function gesture(el, o) {
         o.begin?.(g);
       }
       if (ev.cancelable) ev.preventDefault();
-      o.move(g);
+      if (!frame) frame = requestAnimationFrame(draw);
     };
     const onUp = (ev) => {
       if (ev.type !== 'blur' && ev.pointerId !== e.pointerId) return;
       finish();
       if (!g.active) return;
+      if (frame) { cancelAnimationFrame(frame); draw(); }
       const a = g.pts[0], b = g.pts.at(-1), dt = Math.max(1, b.t - a.t);
       const resting = ev.timeStamp - b.t > 90; // el dedo se detuvo antes de soltar
       g.vx = resting ? 0 : (b.x - a.x) / dt;
@@ -301,7 +305,7 @@ function updateHeader() {
   const day = isoDate(now);
   if (lastDay && day !== lastDay) renderTasks();
   lastDay = day;
-  if (sch.open) { renderGrid(); updateSchSub(); }
+  refreshSchedule();
 }
 
 /* ───────────── Lista de tareas ───────────── */
@@ -335,6 +339,14 @@ function updateTaskEl(li, t) {
   const when = overdue ? `Atrasada · ${dueLabel(t.date)}` : dueLabel(t.date);
   li.querySelector('.task-meta').textContent = [t.subject, when].filter(Boolean).join(' · ');
   li.querySelector('.task-check').setAttribute('aria-label', t.done ? 'Marcar como pendiente' : 'Marcar como hecha');
+}
+
+// Las tarjetas toman el color de su materia: se repinta en cuanto cambia el horario
+function refreshTaskColors() {
+  for (const li of taskList.querySelectorAll('.task')) {
+    const t = state.tasks.find((x) => x.id === li.dataset.key);
+    if (t) li._card.style.setProperty('--c', taskColor(t));
+  }
 }
 
 function doneLabelEl() {
@@ -831,7 +843,7 @@ function schProgress(p, animate) {
 function openSchedule() {
   if (sch.open) { schProgress(1, true); return; }
   if (openLi) closeCard(openLi);
-  renderSchedule();
+  refreshSchedule();
   sch.open = true;
   scheduleEl.inert = false;
   mainEl.inert = true;
@@ -903,10 +915,16 @@ function renderSubjects() {
     : '<p class="subj-empty">Agrega tus materias aquí o desde una casilla 🌸</p>';
 }
 
-function renderSchedule() {
-  renderDayToggles();
+/* El horario se mantiene dibujado de antemano para que deslizar hacia él no se trabe:
+   solo se vuelve a dibujar cuando cambia el día o la clase en curso. */
+let schNowKey = '';
+function refreshSchedule() {
+  const S = state.schedule, m = nowMinutes();
+  const slot = S.slots.find((s) => m >= toMin(s.start) && m < toMin(s.end));
+  const key = `${new Date().getDay()}|${slot?.id || ''}`;
+  if (key === schNowKey) return;
+  schNowKey = key;
   renderGrid();
-  renderSubjects();
   updateSchSub();
 }
 
@@ -916,12 +934,14 @@ function setEditing(on) {
   if (!on) {
     if (document.activeElement && scheduleEl.contains(document.activeElement)) document.activeElement.blur();
     cleanupSubjects();
+    refreshTaskColors();
   }
   scheduleEl.classList.toggle('editing', on);
   scheduleEl.querySelectorAll('.reveal').forEach((r) => { r.inert = !on; });
   schEditBtn.innerHTML = on ? ICON.check : ICON.pencil;
   schEditBtn.setAttribute('aria-label', on ? 'Terminar de editar' : 'Editar horario');
   swapText(schTitle, on ? 'Editar horario' : 'Tus Clases');
+  if (on) renderDayToggles();
   renderGrid();
   renderSubjects();
   updateSchSub();
@@ -950,6 +970,7 @@ function addSubject(name) {
   const s = { id: uid(), name, color: nextColor() };
   state.schedule.subjects.push(s);
   save();
+  refreshTaskColors();
   return s;
 }
 
@@ -959,7 +980,7 @@ function addSubject(name) {
 const openScheduleSwipe = {
   when: (e) => nav.stack.length === 0 && !e.target.closest('.task, .swipe-zone, button'),
   decide: (g) => g.dx > 0 && g.dx > Math.abs(g.dy) * 1.1,
-  begin: () => renderSchedule(),
+  begin: () => refreshSchedule(),
   move: (g) => schProgress(clamp(g.dx / appW(), 0, 1), false),
   end: (g) => {
     if ((g.dx > appW() * 0.25 && g.vx > -0.2) || g.vx > 0.35) openSchedule();
@@ -1080,6 +1101,7 @@ subjList.addEventListener('click', (e) => {
     save();
     haptic(6);
     renderGrid();
+    refreshTaskColors();
   } else if (e.target.closest('.subj-del')) removeSubject(s.id);
 });
 subjList.addEventListener('input', (e) => {
@@ -1089,6 +1111,7 @@ subjList.addEventListener('input', (e) => {
   s.name = e.target.value;
   save();
   renderGrid();
+  refreshTaskColors();
 });
 subjList.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
 
@@ -1102,6 +1125,7 @@ function removeSubject(id) {
   haptic(12);
   renderGrid();
   renderSubjects();
+  refreshTaskColors();
   if (subject.name.trim()) {
     toast('Materia eliminada', 'Deshacer', () => {
       S.subjects.splice(idx, 0, subject);
@@ -1109,6 +1133,7 @@ function removeSubject(id) {
       save();
       renderGrid();
       renderSubjects();
+      refreshTaskColors();
     });
   }
 }
@@ -1263,7 +1288,9 @@ function intro() {
 }
 
 function init() {
-  updateHeader();
+  updateHeader(); // también deja dibujado el horario
+  renderDayToggles();
+  renderSubjects();
   renderTasks();
   intro();
   setInterval(updateHeader, 20000);
