@@ -21,6 +21,7 @@
   <!-- Pantalla principal -->
   <main class="main" id="main">
     <header class="hero" id="hero">
+      <button class="hero-btn" type="button" id="openSched" aria-label="Ver horario"></button>
       <p class="greeting" id="greeting"></p>
       <h1 class="date" id="date"></h1>
       <p class="weekday" id="weekday"></p>
@@ -47,6 +48,8 @@
     <div class="sch-pull" id="schPull" aria-hidden="true"></div>
     <div class="sch-body" id="schBody">
       <header class="sch-head" id="schHead">
+        <button class="head-btn head-left" type="button" id="schEditBtn" aria-label="Editar horario"></button>
+        <button class="head-btn head-right" type="button" id="schBackBtn" aria-label="Volver a las tareas"></button>
         <h2 class="sch-title" id="schTitle">Tus Clases</h2>
         <p class="sch-sub" id="schSub"></p>
       </header>

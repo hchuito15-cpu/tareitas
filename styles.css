@@ -20,7 +20,7 @@
   --ease-io: cubic-bezier(.65, 0, .35, 1);
 
   --side: 26px;           /* margen lateral de las tarjetas */
-  --zone: 92px;           /* espacio vacío inferior para deslizar */
+  --zone: 112px;          /* espacio vacío inferior para deslizar */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   color-scheme: light;
@@ -70,6 +70,7 @@ svg { display: block; }
 .main {
   position: absolute; inset: 0; z-index: 1;
   display: flex; flex-direction: column;
+  touch-action: pan-y; /* los deslizamientos horizontales los maneja la app */
   transition: transform .5s var(--ease-out);
   will-change: transform;
 }
@@ -80,7 +81,18 @@ svg { display: block; }
   transition: opacity .5s var(--ease-out);
 }
 
-.hero { flex: none; padding: calc(var(--safe-top) + 36px) var(--side) 6px; }
+.hero { position: relative; flex: none; padding: calc(var(--safe-top) + 36px) var(--side) 6px; }
+.hero-btn,
+.head-btn {
+  position: absolute;
+  width: 42px; height: 42px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--surface); color: var(--ink-soft);
+  transition: transform .4s var(--ease-spring), background-color .25s, color .25s;
+}
+.hero-btn svg, .head-btn svg { width: 19px; height: 19px; }
+.hero-btn:active, .head-btn:active { transform: scale(.88); }
+.hero-btn { top: calc(var(--safe-top) + 26px); right: calc(var(--side) - 8px); }
 .greeting { margin: 0 0 0 2px; min-height: 1.4em; font-size: 16px; line-height: 1.4; }
 .date {
   margin: 2px 0 0;
@@ -109,7 +121,7 @@ svg { display: block; }
 
 .swipe-zone { flex: none; height: calc(var(--zone) + var(--safe-bottom)); touch-action: none; cursor: grab; }
 
-.edge-zone { position: absolute; z-index: 5; top: 0; bottom: 0; left: 0; width: 22px; touch-action: none; }
+.edge-zone { position: absolute; z-index: 5; top: 0; bottom: 0; left: 0; width: 24px; touch-action: none; }
 
 /* ───────── Tarjetas de tarea ───────── */
 
@@ -459,11 +471,15 @@ textarea.input { height: auto; min-height: 92px; padding: 14px 18px; line-height
   transition: transform .6s var(--ease-spring);
 }
 .sch-head {
-  flex: none;
-  padding: calc(var(--safe-top) + 38px) 20px 16px;
+  position: relative; flex: none;
+  padding: calc(var(--safe-top) + 60px) 20px 16px;
   text-align: center;
   touch-action: none; cursor: grab;
 }
+.head-btn { top: calc(var(--safe-top) + 12px); }
+.head-left { left: 14px; }
+.head-right { right: 14px; }
+.schedule.editing .head-left { background: var(--ink); color: var(--bg); }
 .sch-title { margin: 0; font-size: 38px; font-weight: 800; line-height: 1.1; letter-spacing: -.012em; }
 .sch-sub { margin: 4px 0 0; min-height: 1.4em; font-size: 15.5px; line-height: 1.4; }
 

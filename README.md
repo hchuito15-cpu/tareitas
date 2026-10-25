@@ -25,19 +25,19 @@ En un minuto GitHub Pages publica la nueva versión y la app del teléfono la to
    - Tipo: **Mobile** (para simular el dedo)
 5. Elige "Galaxy S23" en la lista. Arrastra con el mouse para hacer los gestos.
 
-Atajos de teclado para la compu: `n` nueva tarea · `h` horario · `Esc` cerrar.
+También funciona con el trackpad (dos dedos) y con atajos: `n` nueva tarea · `h` horario · `Esc` cerrar.
 
 ## Gestos
 
 | Dónde | Gesto | Qué hace |
 |---|---|---|
-| Espacio vacío de abajo | Deslizar hacia arriba | Nueva tarea |
+| Espacio vacío de abajo | Deslizar hacia arriba (o tocar) | Nueva tarea |
 | Tarjeta | Tocar | Ver la tarea completa |
 | Tarjeta | Deslizar a la derecha | Botón de eliminar (si deslizas hasta el fondo, la borra) |
 | Círculo de la tarjeta | Tocar | Marcar como hecha |
-| Borde izquierdo | Deslizar a la derecha | Horario |
-| Horario | Deslizar a la izquierda | Volver |
-| Título del horario | Jalar hacia abajo | Editar horario (otra vez para salir) |
+| Borde izquierdo, saludo o espacio vacío | Deslizar a la derecha | Horario (también el botón 📅) |
+| Horario | Deslizar a la izquierda | Volver (también el botón de lista) |
+| Título del horario | Jalar hacia abajo | Editar horario (también el lápiz; ✓ para terminar) |
 | Parte de arriba de una hoja | Deslizar hacia abajo | Cerrarla |
 
 En Android, el gesto/botón **atrás** cierra lo que esté abierto. En la pantalla principal, **atrás abre el horario**: en Samsung con navegación por gestos, deslizar desde el borde izquierdo es "atrás", así que el gesto funciona igual.

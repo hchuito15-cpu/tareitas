@@ -42,6 +42,7 @@ const ICON = {
   flag: svg('<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>'),
   bolt: svg('<path d="M13 3L5 13.5h6L10 21l8-10.5h-6L13 3z"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>', 2.6),
+  list: svg('<path d="M9.5 6.5h10M9.5 12h10M9.5 17.5h10"/><path d="M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01" stroke-width="3"/>'),
 };
 
 /* ───────────── Fechas ───────────── */
@@ -148,61 +149,43 @@ const scrim = $('#scrim'), scrim2 = $('#scrim2'), toastEl = $('#toast');
 const appW = () => appEl.clientWidth;
 
 /* ───────────── Botón "atrás" de Android ─────────────
-   Cada hoja o pantalla abierta agrega una entrada al historial, así el gesto/botón
-   "atrás" la cierra en vez de salir de la app. En la pantalla principal, "atrás"
-   (que en Samsung es deslizar desde el borde) abre el horario. */
+   `nav.stack` es lo único que dice qué está abierto. Abrir o cerrar desde la interfaz
+   no toca el historial del navegador. Solo existe UNA entrada extra ("trampa"):
+   cuando llega un "atrás", se cierra lo de arriba (o se abre el horario si no hay
+   nada, porque en Samsung deslizar desde el borde izquierdo es "atrás") y se vuelve
+   a la trampa con history.forward(). */
 
-/* Entradas: 0 = la de carga, 1 = "guardia" (pantalla principal), 2+ = cosas abiertas.
-   Chrome ignora al ir atrás las entradas creadas sin interacción del usuario, por eso
-   nunca se agregan entradas dentro de `popstate`: ahí se usa `history.forward()`. */
-const nav = { stack: [], selfNav: 0 };
-const navDepth = () => history.state?.tareitas || 0;
+const nav = { stack: [] }; // [{ name, close }]
 const topIs = (name) => nav.stack.at(-1)?.name === name;
+const atTrap = () => history.state?.tareitas === 'trap';
 
-function ensureGuard() {
-  if (navDepth() === 0) history.pushState({ tareitas: 1 }, '');
+// Chrome solo respeta entradas creadas tras una interacción, por eso se arma en pointerup/keydown
+function armTrap() {
+  if (!atTrap()) history.pushState({ tareitas: 'trap' }, '');
 }
-function navOpen(name, onBack) {
-  ensureGuard();
-  const depth = navDepth() + 1;
-  history.pushState({ tareitas: depth }, '');
-  nav.stack.push({ name, onBack, depth });
+function navOpen(name, close) {
+  nav.stack.push({ name, close });
 }
-// Algo abierto con "atrás" desde la pantalla principal: vive sobre la guardia, sin entrada propia
-function navOpenOnGuard(name, onBack) {
-  nav.stack.push({ name, onBack, depth: 1, onGuard: true });
-}
-// La interfaz ya cerró algo por su cuenta: solo retrocede el historial
 function navClosed(name) {
   const i = nav.stack.findLastIndex((e) => e.name === name);
-  if (i < 0) return;
-  const [entry] = nav.stack.splice(i, 1);
-  if (entry.onGuard) return;
-  nav.selfNav++;
-  history.back();
+  if (i >= 0) nav.stack.splice(i, 1);
 }
-function navReplace(name, next, onBack) {
+function navReplace(name, next, close) {
   const entry = nav.stack.findLast((e) => e.name === name);
-  if (entry) Object.assign(entry, { name: next, onBack });
+  if (entry) Object.assign(entry, { name: next, close });
+}
+function closeTop() {
+  nav.stack.at(-1)?.close();
 }
 
 addEventListener('popstate', () => {
-  if (nav.selfNav > 0) { nav.selfNav--; return; }
-  const depth = navDepth();
-  if (depth === 0) {
-    // "Atrás" en la pantalla principal abre el horario; con el horario abierto, lo cierra
-    const hadOverlays = nav.stack.length > 0;
-    while (nav.stack.length) nav.stack.pop().onBack();
-    if (!hadOverlays) openSchedule(true);
-    nav.selfNav++;
-    history.forward();
-    return;
-  }
-  while (nav.stack.length && nav.stack.at(-1).depth > depth) nav.stack.pop().onBack();
+  if (atTrap()) return; // es el regreso de history.forward()
+  if (nav.stack.length) closeTop();
+  else openSchedule();
+  history.forward();
 });
-// La guardia se crea con la primera interacción para que Chrome la respete
-addEventListener('pointerup', ensureGuard, true);
-addEventListener('keydown', ensureGuard, true);
+addEventListener('pointerup', armTrap, true);
+addEventListener('keydown', armTrap, true);
 
 /* ───────────── Gestos ───────────── */
 
@@ -219,6 +202,8 @@ function gesture(el, o) {
 
     const onMove = (ev) => {
       if (ev.pointerId !== e.pointerId) return;
+      // Se soltó el botón sin que llegara "pointerup" (p. ej. fuera de la ventana)
+      if (ev.pointerType === 'mouse' && ev.buttons === 0) { onUp(ev); return; }
       g.dx = ev.clientX - e.clientX;
       g.dy = ev.clientY - e.clientY;
       g.pts.push({ x: ev.clientX, y: ev.clientY, t: ev.timeStamp });
@@ -234,7 +219,7 @@ function gesture(el, o) {
       o.move(g);
     };
     const onUp = (ev) => {
-      if (ev.pointerId !== e.pointerId) return;
+      if (ev.type !== 'blur' && ev.pointerId !== e.pointerId) return;
       finish();
       if (!g.active) return;
       const a = g.pts[0], b = g.pts.at(-1), dt = Math.max(1, b.t - a.t);
@@ -248,11 +233,36 @@ function gesture(el, o) {
       removeEventListener('pointermove', onMove);
       removeEventListener('pointerup', onUp);
       removeEventListener('pointercancel', onUp);
+      removeEventListener('blur', onUp);
     }
     addEventListener('pointermove', onMove, { passive: false });
     addEventListener('pointerup', onUp);
     addEventListener('pointercancel', onUp);
+    addEventListener('blur', onUp); // la app pasó a segundo plano a media acción
   });
+}
+
+/* Trackpad de la Mac: deslizar con dos dedos llega como eventos "wheel".
+   Se acumula el movimiento y, al pasar el umbral, se dispara la acción una sola vez
+   por deslizamiento. `map` tiene la dirección en que se mueven los dedos:
+   { right|left|up|down: { when(e), run(e) } } */
+function wheelSwipe(el, map) {
+  let ax = 0, ay = 0, fired = false, idle = 0;
+  el.addEventListener('wheel', (e) => {
+    if (e.ctrlKey) return; // pellizco para zoom
+    clearTimeout(idle);
+    idle = setTimeout(() => { ax = 0; ay = 0; fired = false; }, 220);
+    ax += e.deltaX;
+    ay += e.deltaY;
+    const horizontal = Math.abs(ax) > Math.abs(ay);
+    const dir = horizontal ? (ax < 0 ? 'right' : 'left') : (ay < 0 ? 'down' : 'up');
+    const action = map[dir];
+    if (!action || (action.when && !action.when(e))) return;
+    e.preventDefault();
+    if (fired || Math.abs(horizontal ? ax : ay) < 60) return;
+    fired = true;
+    action.run(e);
+  }, { passive: false });
 }
 
 // Un arrastre no debe terminar en "click"
@@ -434,6 +444,13 @@ document.addEventListener('pointerdown', (e) => {
   if (openLi && !openLi.contains(e.target)) closeCard(openLi);
 }, true);
 
+// Con el trackpad: dos dedos a la derecha sobre una tarjeta muestran "eliminar"
+const wheelCard = (e) => !nav.stack.length && e.target.closest('.task');
+wheelSwipe(taskList, {
+  right: { when: wheelCard, run: (e) => openCard(e.target.closest('.task')) },
+  left: { when: wheelCard, run: (e) => closeCard(e.target.closest('.task')) },
+});
+
 taskList.addEventListener('click', (e) => {
   const li = e.target.closest('.task');
   if (!li) return;
@@ -531,6 +548,7 @@ function sheetDrag(sheet, handle, onClose) {
     move: (g) => sheet.place(g.dy > 0 ? g.dy : -rubber(-g.dy, 24), false),
     end: (g) => (g.dy > h * 0.2 || g.vy > 0.45 ? onClose() : sheet.place(0, true)),
   });
+  wheelSwipe(handle, { down: { when: () => sheet.isOpen, run: onClose } });
 }
 
 /* ───────────── Agregar / editar tarea ───────────── */
@@ -542,9 +560,11 @@ const fUrgent = $('#fUrgent'), urgText = $('#urgText'), fNotes = $('#fNotes'), f
 const form = { editingId: null, priority: 3, urgent: false };
 
 function openAdd(task, fromDrag = false) {
+  if (addSheet.isOpen) return;
+  if (openLi) closeCard(openLi);
   if (!fromDrag) fillForm(task);
   addSheet.open(fromDrag);
-  navOpen('add', () => addSheet.close());
+  navOpen('add', closeAdd);
 }
 function closeAdd() {
   addSheet.close();
@@ -689,10 +709,13 @@ gesture(swipeZone, {
     addSheet.place(y < 0 ? -rubber(-y, 30) : y, false);
   },
   end: (g) => {
-    if (-g.dy > zoneH * 0.25 || g.vy < -0.4) openAdd(null, true);
+    if ((-g.dy > zoneH * 0.18 && g.vy < 0.2) || g.vy < -0.3) openAdd(null, true);
     else addSheet.place(zoneH, true);
   },
 });
+// Un toque en el espacio vacío de abajo, o dos dedos hacia arriba en el trackpad, también la abren
+swipeZone.addEventListener('click', () => { if (!nav.stack.length) openAdd(null); });
+wheelSwipe(swipeZone, { up: { when: () => !nav.stack.length, run: () => openAdd(null) } });
 
 /* ───────────── Detalle de tarea ───────────── */
 
@@ -736,11 +759,11 @@ function fillDetail(t) {
 
 function openDetail(id) {
   const t = state.tasks.find((x) => x.id === id);
-  if (!t) return;
+  if (!t || nav.stack.length) return;
   detailId = id;
   fillDetail(t);
   detailSheet.open();
-  navOpen('detail', () => detailSheet.close());
+  navOpen('detail', closeDetail);
 }
 function closeDetail() {
   detailSheet.close();
@@ -759,7 +782,7 @@ detailBody.addEventListener('click', (e) => {
     detailSheet.close(true);
     fillForm(t);
     addSheet.open();
-    navReplace('detail', 'add', () => addSheet.close());
+    navReplace('detail', 'add', closeAdd);
   }
 });
 
@@ -774,8 +797,7 @@ $('#detailDelete').addEventListener('click', () => {
 sheetDrag(detailSheet, detailHero, closeDetail);
 
 scrim.addEventListener('click', () => {
-  if (topIs('add')) closeAdd();
-  else if (topIs('detail')) closeDetail();
+  if (topIs('add') || topIs('detail')) closeTop();
 });
 
 /* ───────────── Horario ───────────── */
@@ -785,6 +807,15 @@ const schTitle = $('#schTitle'), schSub = $('#schSub'), schGrid = $('#schGrid'),
 const dayToggles = $('#dayToggles'), subjList = $('#subjList');
 const sch = { open: false, editing: false };
 schPull.innerHTML = ICON.pencil;
+
+// Botones discretos por si el gesto no sale: editar (lápiz/✓) y volver a las tareas
+const schEditBtn = $('#schEditBtn'), schBackBtn = $('#schBackBtn');
+schEditBtn.innerHTML = ICON.pencil;
+schBackBtn.innerHTML = ICON.list;
+schEditBtn.addEventListener('click', () => setEditing(!sch.editing));
+schBackBtn.addEventListener('click', closeSchedule);
+$('#openSched').innerHTML = ICON.cal;
+$('#openSched').addEventListener('click', openSchedule);
 
 // p = 0 (cerrado) … 1 (abierto). La pantalla principal se recorre un poco detrás.
 function schProgress(p, animate) {
@@ -797,25 +828,23 @@ function schProgress(p, animate) {
   mainDim.style.opacity = String(p);
 }
 
-function openSchedule(onGuard = false) {
-  if (sch.open) return;
+function openSchedule() {
+  if (sch.open) { schProgress(1, true); return; }
+  if (openLi) closeCard(openLi);
   renderSchedule();
   sch.open = true;
   scheduleEl.inert = false;
   mainEl.inert = true;
-  edgeZone.hidden = true;
   schProgress(1, true);
-  (onGuard ? navOpenOnGuard : navOpen)('schedule', () => closeSchedule(true));
+  navOpen('schedule', closeSchedule);
 }
-function closeSchedule(fromNav = false) {
-  if (!sch.open) return;
-  if (sch.editing) setEditing(false, true);
+function closeSchedule() {
+  if (sch.editing) setEditing(false);
   sch.open = false;
   scheduleEl.inert = true;
   mainEl.inert = false;
-  edgeZone.hidden = false;
   schProgress(0, true);
-  if (!fromNav) navClosed('schedule');
+  navClosed('schedule');
 }
 
 function scheduleStatus() {
@@ -881,20 +910,25 @@ function renderSchedule() {
   updateSchSub();
 }
 
-function setEditing(on, fromNav = false) {
+function setEditing(on) {
   if (sch.editing === on) return;
   sch.editing = on;
-  if (!on) cleanupSubjects();
+  if (!on) {
+    if (document.activeElement && scheduleEl.contains(document.activeElement)) document.activeElement.blur();
+    cleanupSubjects();
+  }
   scheduleEl.classList.toggle('editing', on);
   scheduleEl.querySelectorAll('.reveal').forEach((r) => { r.inert = !on; });
+  schEditBtn.innerHTML = on ? ICON.check : ICON.pencil;
+  schEditBtn.setAttribute('aria-label', on ? 'Terminar de editar' : 'Editar horario');
   swapText(schTitle, on ? 'Editar horario' : 'Tus Clases');
   renderGrid();
   renderSubjects();
   updateSchSub();
   save();
   haptic(10);
-  if (on) navOpen('schedEdit', () => setEditing(false, true));
-  else if (!fromNav) navClosed('schedEdit');
+  if (on) navOpen('schedEdit', () => setEditing(false));
+  else navClosed('schedEdit');
 }
 
 // Las materias sin nombre se descartan al terminar de editar
@@ -919,34 +953,41 @@ function addSubject(name) {
   return s;
 }
 
-// Abrir el horario: deslizar desde el borde izquierdo
-gesture(edgeZone, {
-  when: () => nav.stack.length === 0,
-  decide: (g) => g.dx > 0 && g.dx > Math.abs(g.dy),
+/* Abrir el horario deslizando hacia la derecha: desde el borde izquierdo o desde
+   cualquier parte de la pantalla principal que no sea una tarjeta (el saludo, el
+   espacio vacío…). Así funciona aunque Android se quede con el borde. */
+const openScheduleSwipe = {
+  when: (e) => nav.stack.length === 0 && !e.target.closest('.task, .swipe-zone, button'),
+  decide: (g) => g.dx > 0 && g.dx > Math.abs(g.dy) * 1.1,
   begin: () => renderSchedule(),
   move: (g) => schProgress(clamp(g.dx / appW(), 0, 1), false),
   end: (g) => {
-    if (g.dx > appW() * 0.3 || g.vx > 0.45) openSchedule();
+    if ((g.dx > appW() * 0.25 && g.vx > -0.2) || g.vx > 0.35) openSchedule();
     else schProgress(0, true);
   },
-});
+};
+gesture(edgeZone, openScheduleSwipe);
+gesture(mainEl, openScheduleSwipe);
+wheelSwipe(mainEl, { right: { when: (e) => !nav.stack.length && !e.target.closest('.task'), run: openSchedule } });
 
-// Cerrar el horario: deslizar hacia la izquierda
+// Cerrar el horario: deslizar hacia la izquierda en cualquier parte
 function endScheduleSwipe(g) {
-  if (-g.dx > appW() * 0.3 || g.vx < -0.45) closeSchedule();
+  if ((-g.dx > appW() * 0.25 && g.vx < 0.2) || g.vx < -0.35) closeSchedule();
   else schProgress(1, true);
 }
 gesture(scheduleEl, {
-  when: (e) => sch.open && !sch.editing && topIs('schedule') && !schHead.contains(e.target),
-  decide: (g) => g.dx < 0 && -g.dx > Math.abs(g.dy) * 1.2,
+  when: (e) => topIs('schedule') && !schHead.contains(e.target),
+  decide: (g) => g.dx < 0 && -g.dx > Math.abs(g.dy) * 1.1,
   move: (g) => schProgress(1 + clamp(g.dx / appW(), -1, 0), false),
   end: endScheduleSwipe,
 });
+wheelSwipe(scheduleEl, { left: { when: () => topIs('schedule'), run: closeSchedule } });
+wheelSwipe(schHead, { down: { when: () => topIs('schedule') || topIs('schedEdit'), run: () => setEditing(!sch.editing) } });
 
 // Jalar el título hacia abajo entra (o sale) del modo edición
-const PULL_AT = 64;
+const PULL_AT = 52;
 gesture(schHead, {
-  when: () => sch.open && (topIs('schedule') || topIs('schedEdit')),
+  when: (e) => (topIs('schedule') || topIs('schedEdit')) && !e.target.closest('button'),
   decide: (g) => {
     if (g.dy > 0 && g.dy > Math.abs(g.dx)) { g.mode = 'pull'; g.armed = false; return true; }
     if (!sch.editing && g.dx < 0 && -g.dx > Math.abs(g.dy)) { g.mode = 'close'; return true; }
@@ -954,7 +995,7 @@ gesture(schHead, {
   },
   move: (g) => {
     if (g.mode === 'close') { schProgress(1 + clamp(g.dx / appW(), -1, 0), false); return; }
-    const y = rubber(Math.max(0, g.dy), 200);
+    const y = rubber(Math.max(0, g.dy), 240);
     const p = clamp(y / PULL_AT, 0, 1);
     schBody.style.transition = 'none';
     schBody.style.transform = `translate3d(0, ${y}px, 0)`;
@@ -981,7 +1022,7 @@ gesture(schHead, {
 });
 
 schGrid.addEventListener('click', (e) => {
-  if (!sch.editing) return;
+  if (!topIs('schedEdit')) return;
   const cell = e.target.closest('.sch-cell');
   if (cell) return openPicker(cell.dataset.slot, Number(cell.dataset.day));
   const time = e.target.closest('.sch-time');
@@ -1099,7 +1140,7 @@ const miniTitle = $('#miniTitle'), miniBody = $('#miniBody');
 function openMini() {
   miniBody.scrollTop = 0;
   miniSheet.open();
-  navOpen('mini', () => miniSheet.close());
+  navOpen('mini', closeMini);
 }
 function closeMini() {
   miniSheet.close();
@@ -1204,19 +1245,8 @@ function hideToast() {
 
 /* ───────────── Teclado (para probar en la compu) ───────────── */
 
-const CLOSERS = {
-  add: closeAdd,
-  detail: closeDetail,
-  schedule: () => closeSchedule(),
-  schedEdit: () => setEditing(false),
-  mini: closeMini,
-};
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    const top = nav.stack.at(-1);
-    if (top) CLOSERS[top.name]?.();
-    return;
-  }
+  if (e.key === 'Escape') { closeTop(); return; }
   if (e.target.closest?.('input, textarea') || nav.stack.length) return;
   if (e.key === 'n') openAdd(null);
   if (e.key === 'h') openSchedule();
@@ -1233,10 +1263,6 @@ function intro() {
 }
 
 function init() {
-  // Si se recargó con algo abierto, volver a la pantalla principal
-  const depth = navDepth();
-  if (depth > 1) { nav.selfNav++; history.go(1 - depth); }
-
   updateHeader();
   renderTasks();
   intro();
