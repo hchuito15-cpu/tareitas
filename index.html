@@ -21,17 +21,31 @@
   <!-- Pantalla principal -->
   <main class="main" id="main">
     <header class="hero" id="hero">
-      <button class="hero-btn" type="button" id="openSched" aria-label="Ver horario"></button>
+      <div class="hero-btns">
+        <button class="hero-btn" type="button" id="openSched" aria-label="Horario"></button>
+        <button class="hero-btn" type="button" id="openMat" aria-label="Materias"></button>
+      </div>
       <p class="greeting" id="greeting"></p>
       <h1 class="date" id="date"></h1>
       <p class="weekday" id="weekday"></p>
+      <button class="hero-note" type="button" id="heroNote" hidden></button>
     </header>
 
-    <section class="list-wrap" id="listWrap" aria-label="Tareas">
+    <nav class="tabs-row" aria-label="Secciones">
+      <div class="seg" id="tabs" role="tablist">
+        <span class="seg-ind" aria-hidden="true"></span>
+        <button type="button" role="tab" data-val="task">Tareas</button>
+        <button type="button" role="tab" data-val="material">Materiales</button>
+        <button type="button" role="tab" data-val="project">Proyectos</button>
+      </div>
+      <button class="filter-btn" type="button" id="filterBtn" aria-label="Ordenar y filtrar"></button>
+    </nav>
+
+    <section class="list-wrap" id="listWrap" aria-label="Lista">
       <ul class="task-list" id="taskList"></ul>
       <div class="empty-state" id="empty">
         <span class="empty-flower" aria-hidden="true">🌸</span>
-        <p>Sin pendientes por ahora</p>
+        <p id="emptyText">Sin pendientes por ahora</p>
       </div>
     </section>
 
@@ -40,11 +54,12 @@
     <div class="main-dim" id="mainDim"></div>
   </main>
 
-  <!-- Borde izquierdo: deslizar hacia la derecha abre el horario -->
+  <!-- Bordes: a la derecha abre el horario, a la izquierda abre materias -->
   <div class="edge-zone" id="edgeZone" aria-hidden="true"></div>
+  <div class="edge-zone edge-right" id="edgeZoneR" aria-hidden="true"></div>
 
-  <!-- Horario -->
-  <section class="schedule" id="schedule" aria-label="Horario" inert>
+  <!-- Horario (entra por la izquierda) -->
+  <section class="side schedule" id="schedule" aria-label="Horario" inert>
     <div class="sch-pull" id="schPull" aria-hidden="true"></div>
     <div class="sch-body" id="schBody">
       <header class="sch-head" id="schHead">
@@ -70,12 +85,31 @@
     </div>
   </section>
 
+  <!-- Materias (entra por la derecha) -->
+  <section class="side materias" id="materias" aria-label="Materias" inert>
+    <header class="sch-head mat-head" id="matHead">
+      <button class="head-btn head-left" type="button" id="matBackBtn" aria-label="Volver a las tareas"></button>
+      <button class="head-btn head-right" type="button" id="matAddBtn" aria-label="Nueva materia"></button>
+      <h2 class="sch-title">Tus Materias</h2>
+      <p class="sch-sub" id="matSub"></p>
+    </header>
+    <div class="mat-scroll" id="matScroll">
+      <div class="mat-list" id="matList"></div>
+    </div>
+  </section>
+
   <div class="scrim" id="scrim"></div>
 
-  <!-- Nueva tarea / editar -->
-  <section class="sheet" id="addSheet" aria-label="Nueva tarea" inert>
+  <!-- Nueva tarea / material / proyecto -->
+  <section class="sheet" id="addSheet" aria-label="Agregar" inert>
     <div class="sheet-head" id="addHead">
       <button class="icon-btn" type="button" id="addClose" aria-label="Cerrar"></button>
+      <div class="seg seg-sm" id="fType" role="tablist" aria-label="Tipo">
+        <span class="seg-ind" aria-hidden="true"></span>
+        <button type="button" role="tab" data-val="task">Tarea</button>
+        <button type="button" role="tab" data-val="material">Material</button>
+        <button type="button" role="tab" data-val="project">Proyecto</button>
+      </div>
     </div>
     <form class="sheet-body" id="addForm" novalidate autocomplete="off">
       <label class="field-label" for="fName">Nombre</label>
@@ -85,20 +119,32 @@
       <input class="input" id="fSubject" placeholder="Materia" maxlength="40" enterkeyhint="done">
       <div class="chips" id="fChips"></div>
 
-      <label class="field-label" for="fDate">Fecha</label>
+      <div data-show="task material" id="fProjectWrap">
+        <span class="field-label">Proyecto</span>
+        <div class="chips" id="fProjects"></div>
+      </div>
+
+      <label class="field-label" for="fDate" id="fDateLbl">Fecha</label>
       <input class="input" id="fDate" type="date">
 
-      <span class="field-label" id="prioLbl">Prioridad</span>
-      <div class="prio" id="fPrio" role="slider" tabindex="0" aria-labelledby="prioLbl" aria-valuemin="1" aria-valuemax="5">
-        <div class="prio-track"></div>
-        <div class="prio-pos"><span class="prio-thumb"></span></div>
+      <div data-show="material">
+        <label class="field-label" for="fPrice">Precio</label>
+        <div class="money-input"><span aria-hidden="true">$</span><input class="input" id="fPrice" inputmode="decimal" placeholder="0" maxlength="10"></div>
       </div>
-      <div class="prio-labels"><span>Baja</span><b id="prioText"></b><span>Alta</span></div>
 
-      <div class="urgent-row">
-        <span class="field-label" id="urgLbl">Urgente</span>
-        <button class="switch" type="button" id="fUrgent" role="switch" aria-checked="false" aria-labelledby="urgLbl"><span class="switch-knob"></span></button>
-        <span class="switch-state" id="urgText">No</span>
+      <div data-show="task material">
+        <span class="field-label" id="prioLbl">Prioridad</span>
+        <div class="prio" id="fPrio" role="slider" tabindex="0" aria-labelledby="prioLbl" aria-valuemin="1" aria-valuemax="5">
+          <div class="prio-track"></div>
+          <div class="prio-pos"><span class="prio-thumb"></span></div>
+        </div>
+        <div class="prio-labels"><span>Baja</span><b id="prioText"></b><span>Alta</span></div>
+
+        <div class="urgent-row">
+          <span class="field-label" id="urgLbl">Urgente</span>
+          <button class="switch" type="button" id="fUrgent" role="switch" aria-checked="false" aria-labelledby="urgLbl"><span class="switch-knob"></span></button>
+          <span class="switch-state" id="urgText">No</span>
+        </div>
       </div>
 
       <label class="field-label" for="fNotes">Notas</label>
@@ -108,12 +154,12 @@
     </form>
   </section>
 
-  <!-- Detalle de una tarea -->
-  <section class="sheet sheet-detail" id="detailSheet" aria-label="Detalle de la tarea" inert>
+  <!-- Detalle de tarea, material o proyecto -->
+  <section class="sheet sheet-detail" id="detailSheet" aria-label="Detalle" inert>
     <div class="detail-hero" id="detailHero">
       <div class="sheet-head">
         <button class="icon-btn light" type="button" id="detailClose" aria-label="Cerrar"></button>
-        <button class="icon-btn light" type="button" id="detailDelete" aria-label="Eliminar tarea"></button>
+        <button class="icon-btn light" type="button" id="detailDelete" aria-label="Eliminar"></button>
       </div>
       <h2 class="detail-name" id="dName"></h2>
       <p class="detail-subject" id="dSubject"></p>
@@ -121,7 +167,20 @@
     <div class="sheet-body" id="detailBody"></div>
   </section>
 
-  <!-- Hoja pequeña (elegir materia, editar hora) -->
+  <!-- Una materia: calificaciones, exámenes y recordatorios -->
+  <section class="sheet sheet-detail" id="subjectSheet" aria-label="Materia" inert>
+    <div class="detail-hero" id="subjHero">
+      <div class="sheet-head">
+        <button class="icon-btn light" type="button" id="subjClose" aria-label="Cerrar"></button>
+        <button class="icon-btn light" type="button" id="subjDelete" aria-label="Eliminar materia"></button>
+      </div>
+      <input class="subj-title" id="subjName" placeholder="Nombre de la materia" maxlength="40" enterkeyhint="done" aria-label="Nombre de la materia">
+      <div class="swatches" id="subjColors" aria-label="Color"></div>
+    </div>
+    <div class="sheet-body" id="subjBody"></div>
+  </section>
+
+  <!-- Hoja pequeña (filtros, elegir materia, editar hora, exámenes…) -->
   <div class="scrim scrim-top" id="scrim2"></div>
   <section class="sheet sheet-mini" id="miniSheet" inert>
     <div class="sheet-head" id="miniHead">
@@ -133,6 +192,7 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </div>
+<script src="confetti.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

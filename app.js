@@ -18,6 +18,15 @@ const PASTELS = ['#F7E7A6', '#F4CDC6', '#CBDCEE', '#D5E8CB', '#E2D3F2', '#F7D9BE
 const PRIO_TEXT = ['', 'Muy baja', 'Baja', 'Media', 'Alta', 'Muy alta'];
 const PRIO_COLORS = ['#AEB6F4', '#BEB3EC', '#CDB0E3', '#E0ACC5', '#F2A7A7'];
 
+const TABS = ['task', 'material', 'project'];
+const KIND_NAME = { task: 'Tarea', material: 'Material', project: 'Proyecto' };
+const SORT_OPTS = [['date', 'Fecha límite'], ['subject', 'Materia'], ['importance', 'Importancia']];
+const STATUS_OPTS = [['all', 'Todas'], ['pending', 'Sin terminar'], ['done', 'Terminadas']];
+const URGENCY_OPTS = [['all', 'Todas'], ['urgent', 'Urgentes'], ['normal', 'No urgentes']];
+// Cuántos días antes del examen aparece el aviso en la pantalla principal (-1 = sin aviso)
+const REMIND_OPTS = [[-1, 'Sin aviso'], [0, 'El mismo día'], [1, '1 día antes'], [3, '3 días antes'], [7, '1 semana antes']];
+const PARTIALS = ['1er parcial', '2º parcial', '3er parcial'];
+
 /* ───────────── Utilidades ───────────── */
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -25,12 +34,21 @@ const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const norm = (s) => String(s ?? '').trim().toLowerCase();
-const haptic = (pattern = 8) => { try { navigator.vibrate?.(pattern); } catch (_) { /* sin vibración */ } };
+const haptic = (pattern = 8) => {
+  if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return; // Chrome lo bloquea antes del primer toque
+  try { navigator.vibrate?.(pattern); } catch (_) { /* sin vibración */ }
+};
 // Resistencia elástica cuando se arrastra más allá del límite
 const rubber = (d, max) => max * (1 - 1 / ((d * 0.9) / max + 1));
 const EASE = 'cubic-bezier(.22, 1, .36, 1)';
 const SPRING = 'cubic-bezier(.34, 1.36, .64, 1)';
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const parseNum = (s) => {
+  const n = parseFloat(String(s ?? '').replace(/[^\d.,]/g, '').replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
+};
+const money = (n) => `$${Number(n).toLocaleString('es-MX', { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })}`;
+const sum = (arr) => arr.reduce((a, b) => a + b, 0);
 
 const svg = (body, sw = 2) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 const ICON = {
@@ -43,6 +61,12 @@ const ICON = {
   bolt: svg('<path d="M13 3L5 13.5h6L10 21l8-10.5h-6L13 3z"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>', 2.6),
   list: svg('<path d="M9.5 6.5h10M9.5 12h10M9.5 17.5h10"/><path d="M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01" stroke-width="3"/>'),
+  book: svg('<path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v14.5H6.5A1.5 1.5 0 0 0 5 19z"/><path d="M5 19a1.5 1.5 0 0 0 1.5 1.5H19"/><path d="M9 7.5h6"/>'),
+  sliders: svg('<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>'),
+  folder: svg('<path d="M3.5 7.5A1.5 1.5 0 0 1 5 6h4l2 2h8a1.5 1.5 0 0 1 1.5 1.5V17a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 17z"/>'),
+  tag: svg('<path d="M3.5 12.5V4.5h8l9 9-8 8z"/><circle cx="8" cy="9" r="1.3"/>'),
+  note: svg('<path d="M6 3.5h9l3.5 3.5V20.5H6z"/><path d="M9 11h6M9 15h6"/>'),
+  bell: svg('<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>'),
 };
 
 /* ───────────── Fechas ───────────── */
@@ -58,6 +82,7 @@ const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const isoDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const parseISO = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
 const todayISO = () => isoDate(new Date());
+const addDaysISO = (iso, n) => { const d = parseISO(iso); d.setDate(d.getDate() + n); return isoDate(d); };
 const dayDiff = (iso) => Math.round((parseISO(iso) - parseISO(todayISO())) / 86400000);
 const toMin = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
 const fromMin = (m) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
@@ -97,63 +122,86 @@ function longDate(iso) {
 /* ───────────── Datos ───────────── */
 
 const STORE_KEY = 'tareitas:v1';
+const VIEW_DEFAULT = { sort: 'date', status: 'all', urgency: 'all' };
 
+function newSubject(name = '', color = PASTELS[0]) {
+  return { id: uid(), name, color, grades: [null, null, null], exams: [], reminders: [] };
+}
 function defaultSchedule() {
   const slots = [];
   for (let h = 7; h < 14; h++) slots.push({ id: uid(), start: fromMin(h * 60), end: fromMin(h * 60 + 60) });
-  return { days: [1, 2, 3, 4, 5], slots, subjects: [], cells: {} };
+  return { days: [1, 2, 3, 4, 5], slots, cells: {} };
 }
+// Lee lo guardado y lo pasa al formato actual (las versiones anteriores no tenían tipos ni proyectos)
 function load() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORE_KEY));
-    if (saved) {
-      return {
-        tasks: Array.isArray(saved.tasks) ? saved.tasks : [],
-        schedule: saved.schedule?.slots ? saved.schedule : defaultSchedule(),
-      };
-    }
-  } catch (_) { /* datos ilegibles: empezar de cero */ }
-  return { tasks: [], schedule: defaultSchedule() };
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(STORE_KEY)); } catch (_) { /* datos ilegibles: empezar de cero */ }
+  saved = saved || {};
+  const schedule = saved.schedule?.slots ? saved.schedule : defaultSchedule();
+  const subjects = (saved.subjects || schedule.subjects || []).map((s) => ({
+    ...newSubject(),
+    ...s,
+    grades: [0, 1, 2].map((i) => s.grades?.[i] ?? null),
+  }));
+  delete schedule.subjects;
+  const views = saved.prefs?.views || {};
+  return {
+    tasks: (Array.isArray(saved.tasks) ? saved.tasks : []).map((t) => ({ kind: 'task', projectId: null, price: null, ...t })),
+    projects: Array.isArray(saved.projects) ? saved.projects : [],
+    subjects,
+    schedule,
+    prefs: { views: Object.fromEntries(TABS.map((k) => [k, { ...VIEW_DEFAULT, ...views[k] }])) },
+  };
 }
 const state = load();
 function save() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (_) { /* almacenamiento bloqueado */ }
 }
 
-const subjectById = (id) => (id ? state.schedule.subjects.find((s) => s.id === id) : null);
-const findSubject = (name) => state.schedule.subjects.find((s) => norm(s.name) && norm(s.name) === norm(name));
+const subjectById = (id) => (id ? state.subjects.find((s) => s.id === id) : null);
+const findSubject = (name) => state.subjects.find((s) => norm(s.name) && norm(s.name) === norm(name));
+const projectById = (id) => (id ? state.projects.find((p) => p.id === id) : null);
+const itemById = (id) => state.tasks.find((t) => t.id === id);
+const projectItems = (p) => state.tasks.filter((t) => t.projectId === p.id);
+const isComplete = (p) => { const items = projectItems(p); return items.length > 0 && items.every((t) => t.done); };
+
 function hashColor(s) {
   let h = 7;
   for (const ch of s) h = (h * 31 + ch.codePointAt(0)) >>> 0;
   return PASTELS[h % (PASTELS.length - 1)]; // sin el gris
 }
-// La tarjeta toma el color de su materia del horario; si no existe, uno fijo según el texto
-const taskColor = (t) => findSubject(t.subject)?.color || hashColor(norm(t.subject) || norm(t.name));
+// Todo toma el color de su materia; si la materia no existe, uno fijo según el texto
+const colorFor = (subject, fallback) => findSubject(subject)?.color || hashColor(norm(subject) || norm(fallback));
+const taskColor = (t) => colorFor(t.subject, t.name);
+const projectColor = (p) => colorFor(p.subject, p.name);
 
-function sortTasks(a, b) {
-  if (a.done !== b.done) return a.done ? 1 : -1;
-  if (a.done) return (b.doneAt || 0) - (a.doneAt || 0);
-  if (a.urgent !== b.urgent) return a.urgent ? -1 : 1;
-  if (a.date !== b.date) return a.date < b.date ? -1 : 1;
-  if (a.priority !== b.priority) return b.priority - a.priority;
-  return a.createdAt - b.createdAt;
+// Calificaciones: escala de 10 (o de 100 si alguna pasa de 10)
+function average(grades) {
+  const g = grades.filter((x) => x != null);
+  return g.length ? sum(g) / g.length : null;
+}
+const fmtGrade = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+function gradeClass(avg, grades) {
+  const scale = grades.some((x) => x != null && x > 10) ? 100 : 10;
+  return avg < scale * 0.6 ? 'low' : avg < scale * 0.8 ? 'mid' : 'high';
 }
 
 /* ───────────── Elementos ───────────── */
 
 const appEl = $('#app'), mainEl = $('#main'), mainDim = $('#mainDim');
-const greetEl = $('#greeting'), dateEl = $('#date'), weekdayEl = $('#weekday');
-const taskList = $('#taskList'), emptyEl = $('#empty');
-const swipeZone = $('#swipeZone'), edgeZone = $('#edgeZone');
+const greetEl = $('#greeting'), dateEl = $('#date'), weekdayEl = $('#weekday'), heroNote = $('#heroNote');
+const listWrap = $('#listWrap'), taskList = $('#taskList'), emptyEl = $('#empty'), emptyText = $('#emptyText');
+const tabsEl = $('#tabs'), filterBtn = $('#filterBtn');
+const swipeZone = $('#swipeZone'), edgeZone = $('#edgeZone'), edgeZoneR = $('#edgeZoneR');
 const scrim = $('#scrim'), scrim2 = $('#scrim2'), toastEl = $('#toast');
 const appW = () => appEl.clientWidth;
+const ui = { tab: 'task', detail: null, subjectId: null };
 
 /* ───────────── Botón "atrás" de Android ─────────────
    `nav.stack` es lo único que dice qué está abierto. Abrir o cerrar desde la interfaz
    no toca el historial del navegador. Solo existe UNA entrada extra ("trampa"):
-   cuando llega un "atrás", se cierra lo de arriba (o se abre el horario si no hay
-   nada, porque en Samsung deslizar desde el borde izquierdo es "atrás") y se vuelve
-   a la trampa con history.forward(). */
+   cuando llega un "atrás", se cierra lo de arriba y se vuelve a la trampa con
+   history.forward(). En la pantalla principal, "atrás" avisa y el siguiente sale. */
 
 const nav = { stack: [] }; // [{ name, close }]
 const topIs = (name) => nav.stack.at(-1)?.name === name;
@@ -180,9 +228,12 @@ function closeTop() {
 
 addEventListener('popstate', () => {
   if (atTrap()) return; // es el regreso de history.forward()
-  if (nav.stack.length) closeTop();
-  else openSchedule();
-  history.forward();
+  if (nav.stack.length) {
+    closeTop();
+    history.forward();
+  } else {
+    toast('Desliza otra vez para salir');
+  }
 });
 addEventListener('pointerup', armTrap, true);
 addEventListener('keydown', armTrap, true);
@@ -198,7 +249,7 @@ function gesture(el, o) {
   el.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     if (o.when && !o.when(e)) return;
-    const g = { dx: 0, dy: 0, vx: 0, vy: 0, active: false, pts: [{ x: e.clientX, y: e.clientY, t: e.timeStamp }] };
+    const g = { dx: 0, dy: 0, vx: 0, vy: 0, active: false, target: e.target, pts: [{ x: e.clientX, y: e.clientY, t: e.timeStamp }] };
     // Se dibuja como máximo una vez por cuadro de pantalla, aunque lleguen más eventos
     let frame = 0;
     const draw = () => { frame = 0; o.move(g); };
@@ -282,16 +333,45 @@ function shake(el) {
   );
 }
 
-// Cambia un texto con un desvanecido suave
+// Cambia un texto con un desvanecido suave (el cambio va con temporizador para que ocurra siempre)
 function swapText(el, text) {
-  if (el.textContent === text) return;
-  if (!el.textContent || reduceMotion) { el.textContent = text; return; }
-  const out = el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-6px)' }], { duration: 200, easing: 'ease-in', fill: 'forwards' });
-  out.onfinish = () => {
+  if ((el.dataset.next ?? el.textContent) === text) return;
+  clearTimeout(el._swap);
+  el._out?.cancel();
+  if (!el.textContent || reduceMotion) { el.textContent = text; delete el.dataset.next; return; }
+  el.dataset.next = text;
+  el._out = el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-6px)' }], { duration: 200, easing: 'ease-in', fill: 'forwards' });
+  el._swap = setTimeout(() => {
     el.textContent = text;
+    delete el.dataset.next;
     el.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 420, easing: EASE });
-    out.cancel();
-  };
+    el._out.cancel();
+    el._out = null;
+  }, 200);
+}
+
+// Control segmentado (pestañas y tipo de elemento): una píldora blanca se desliza a la opción elegida
+function setupSeg(el, onPick) {
+  el.style.setProperty('--n', el.querySelectorAll('button').length);
+  el.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (b) onPick(b.dataset.val);
+  });
+}
+function setSeg(el, val) {
+  const btns = [...el.querySelectorAll('button')];
+  const i = Math.max(0, btns.findIndex((b) => b.dataset.val === val));
+  el.style.setProperty('--i', i);
+  btns.forEach((b, j) => b.setAttribute('aria-selected', String(j === i)));
+}
+
+// Fiesta al terminar algo 🎉 (sale desde el elemento tocado)
+function celebrate(el, big = false) {
+  const a = appEl.getBoundingClientRect();
+  let x = a.width / 2, y = a.height * 0.45;
+  const r = el?.getBoundingClientRect();
+  if (r?.width) { x = r.left + r.width / 2 - a.left; y = r.top + r.height / 2 - a.top; }
+  confetti(x, y, big ? { count: 150, spread: 80, power: 1.3 } : { count: 60, spread: 55 });
 }
 
 /* ───────────── Encabezado ───────────── */
@@ -303,23 +383,133 @@ function updateHeader() {
   dateEl.textContent = `${pad(now.getDate())} ${MONTHS[now.getMonth()]}`;
   weekdayEl.textContent = WEEKDAYS[now.getDay()];
   const day = isoDate(now);
-  if (lastDay && day !== lastDay) renderTasks();
+  if (lastDay && day !== lastDay) { renderList(); renderMaterias(); }
   lastDay = day;
   refreshSchedule();
+  renderHeroNote();
 }
 
-/* ───────────── Lista de tareas ───────────── */
+// Exámenes y recordatorios que ya deben avisarse
+function upcomingAlerts() {
+  const out = [];
+  for (const s of state.subjects) {
+    if (!s.name.trim()) continue;
+    for (const e of s.exams) {
+      const n = dayDiff(e.date);
+      if (e.remind >= 0 && n >= 0 && n <= e.remind) out.push({ n, time: e.time || '', text: `📚 ${e.title || 'Examen'} de ${s.name}`, subjectId: s.id });
+    }
+    for (const r of s.reminders) {
+      const n = dayDiff(r.date);
+      if (n >= 0 && n <= 1) out.push({ n, time: r.time || '', text: `🔔 ${r.text}`, subjectId: s.id });
+    }
+  }
+  return out.sort((a, b) => a.n - b.n || a.time.localeCompare(b.time));
+}
+function renderHeroNote() {
+  const alerts = upcomingAlerts();
+  heroNote.hidden = !alerts.length;
+  if (!alerts.length) return;
+  const a = alerts[0];
+  const when = `${dueLabel(addDaysISO(todayISO(), a.n)).toLowerCase()}${a.time ? ` ${fmtTime(a.time)}` : ''}`;
+  heroNote.innerHTML = `<span class="note-txt">${esc(a.text)} · ${esc(when)}</span>${alerts.length > 1 ? `<span class="note-more">+${alerts.length - 1}</span>` : ''}`;
+  heroNote.dataset.subject = a.subjectId;
+}
+heroNote.addEventListener('click', () => {
+  if (nav.stack.length) return;
+  openMaterias();
+  setTimeout(() => openSubject(heroNote.dataset.subject), 260);
+});
+
+/* ───────────── Lista: Tareas / Materiales / Proyectos ───────────── */
+
+const viewOf = (tab = ui.tab) => state.prefs.views[tab];
+const filtersActive = (v) => v.sort !== 'date' || v.status !== 'all' || v.urgency !== 'all';
+const subjKey = (x) => norm(x.subject) || '￿'; // sin materia al final
+const byDate = (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+
+function itemMatches(t, v) {
+  if (v.status === 'pending' && t.done) return false;
+  if (v.status === 'done' && !t.done) return false;
+  if (v.urgency === 'urgent' && !t.urgent) return false;
+  if (v.urgency === 'normal' && t.urgent) return false;
+  return true;
+}
+function compareItems(sort) {
+  const importance = (a, b) => (+!!b.urgent - +!!a.urgent) || (b.priority - a.priority);
+  return (a, b) => {
+    if (sort === 'importance') return importance(a, b) || byDate(a, b) || a.createdAt - b.createdAt;
+    if (sort === 'subject') return subjKey(a).localeCompare(subjKey(b), 'es') || byDate(a, b) || importance(a, b);
+    return byDate(a, b) || importance(a, b) || a.createdAt - b.createdAt;
+  };
+}
+function compareProjects(sort) {
+  const score = (p) => {
+    const pending = projectItems(p).filter((t) => !t.done);
+    return [pending.some((t) => t.urgent) ? 1 : 0, Math.max(0, ...pending.map((t) => t.priority || 0))];
+  };
+  return (a, b) => {
+    const ca = isComplete(a), cb = isComplete(b);
+    if (ca !== cb) return ca ? 1 : -1;
+    if (sort === 'subject') return subjKey(a).localeCompare(subjKey(b), 'es') || byDate(a, b);
+    if (sort === 'importance') {
+      const [ua, pa] = score(a), [ub, pb] = score(b);
+      return ub - ua || pb - pa || byDate(a, b);
+    }
+    return byDate(a, b) || a.createdAt - b.createdAt;
+  };
+}
+const byDoneAt = (a, b) => (b.doneAt || 0) - (a.doneAt || 0);
+
+// Filas que se van a mostrar en la pestaña actual (cada una con una clave única)
+function buildRows() {
+  const v = viewOf(), rows = [];
+  if (ui.tab === 'project') {
+    const filtered = v.status !== 'all' || v.urgency !== 'all';
+    for (const p of [...state.projects].sort(compareProjects(v.sort))) {
+      const items = projectItems(p);
+      const visible = items.filter((t) => itemMatches(t, v));
+      if (filtered && !visible.length) continue;
+      rows.push({ key: `p:${p.id}`, type: 'project', project: p, items });
+      const sort = v.sort === 'subject' ? 'date' : v.sort;
+      for (const t of [...visible.filter((x) => !x.done).sort(compareItems(sort)), ...visible.filter((x) => x.done).sort(byDoneAt)]) {
+        rows.push({ key: t.id, type: 'item', item: t, inProject: true });
+      }
+      if (!items.length) rows.push({ key: `h:${p.id}`, type: 'hint', text: 'Toca + para agregarle tareas o materiales' });
+    }
+    return rows;
+  }
+  const items = state.tasks.filter((t) => t.kind === ui.tab && itemMatches(t, v));
+  const pending = items.filter((t) => !t.done).sort(compareItems(v.sort));
+  const done = items.filter((t) => t.done).sort(byDoneAt);
+  if (ui.tab === 'material') {
+    const toBuy = pending.filter((t) => t.price != null);
+    if (toBuy.length) rows.push({ key: '__sum', type: 'summary', text: `Por conseguir: <b>${money(sum(toBuy.map((t) => t.price)))}</b> · ${toBuy.length} ${toBuy.length === 1 ? 'material' : 'materiales'}` });
+  }
+  let group = null;
+  for (const t of pending) {
+    if (v.sort === 'subject' && subjKey(t) !== group) {
+      group = subjKey(t);
+      rows.push({ key: `g:${group}`, type: 'label', text: t.subject.trim() || 'Sin materia', color: t.subject.trim() ? taskColor(t) : null });
+    }
+    rows.push({ key: t.id, type: 'item', item: t });
+  }
+  if (done.length && v.status === 'all') rows.push({ key: '__done', type: 'label', text: 'Hechas' });
+  for (const t of done) rows.push({ key: t.id, type: 'item', item: t });
+  return rows;
+}
 
 const DEL_W = 84; // cuánto se recorre la tarjeta para mostrar el botón de borrar
 let openLi = null;
 
-function taskEl() {
+function itemEl() {
   const li = document.createElement('li');
   li.className = 'task';
+  li.dataset.type = 'item';
   li.innerHTML = `
-    <button class="task-del" type="button" tabindex="-1" aria-label="Eliminar tarea">${ICON.trash}</button>
+    <button class="task-del" type="button" tabindex="-1" aria-label="Eliminar">${ICON.trash}</button>
     <div class="task-card" role="button" tabindex="0">
       <div class="task-text"><span class="task-name"><span></span></span><span class="task-meta"></span></div>
+      <span class="task-price"></span>
       <span class="task-urgent" aria-label="Urgente"></span>
       <button class="task-check" type="button">${ICON.check}</button>
     </div>`;
@@ -328,68 +518,90 @@ function taskEl() {
   attachCardGestures(li);
   return li;
 }
-
-function updateTaskEl(li, t) {
+function updateItemEl(li, t, inProject) {
   const overdue = !t.done && dayDiff(t.date) < 0;
   li.classList.toggle('done', !!t.done);
   li.classList.toggle('urgent', !!t.urgent && !t.done);
   li.classList.toggle('overdue', overdue);
+  li.classList.toggle('in-project', !!inProject);
   li._card.style.setProperty('--c', taskColor(t));
   li.querySelector('.task-name > span').textContent = t.name;
   const when = overdue ? `Atrasada · ${dueLabel(t.date)}` : dueLabel(t.date);
-  li.querySelector('.task-meta').textContent = [t.subject, when].filter(Boolean).join(' · ');
+  const project = !inProject && projectById(t.projectId);
+  li.querySelector('.task-meta').textContent = [t.subject, project && `📁 ${project.name}`, when].filter(Boolean).join(' · ');
+  li.querySelector('.task-price').textContent = t.kind === 'material' && t.price != null ? money(t.price) : '';
   li.querySelector('.task-check').setAttribute('aria-label', t.done ? 'Marcar como pendiente' : 'Marcar como hecha');
 }
 
-// Las tarjetas toman el color de su materia: se repinta en cuanto cambia el horario
-function refreshTaskColors() {
-  for (const li of taskList.querySelectorAll('.task')) {
-    const t = state.tasks.find((x) => x.id === li.dataset.key);
-    if (t) li._card.style.setProperty('--c', taskColor(t));
-  }
-}
-
-function doneLabelEl() {
+function projEl() {
   const li = document.createElement('li');
-  li.className = 'done-label';
-  li.dataset.key = '__done';
-  li.textContent = 'Hechas';
+  li.className = 'proj';
+  li.dataset.type = 'project';
+  li.innerHTML = `
+    <div class="proj-card" role="button" tabindex="0">
+      <div class="proj-text">
+        <span class="proj-name"></span>
+        <span class="proj-meta"></span>
+        <span class="proj-progress"><span class="bar"><i></i></span><span class="proj-count"></span></span>
+      </div>
+      <button class="proj-add" type="button" aria-label="Agregar al proyecto">${ICON.plus}</button>
+    </div>`;
   return li;
 }
+function updateProjEl(li, p, items) {
+  const done = items.filter((t) => t.done).length, total = items.length;
+  const complete = total > 0 && done === total;
+  const cost = sum(items.filter((t) => t.kind === 'material' && t.price != null).map((t) => t.price));
+  li.classList.toggle('complete', complete);
+  li.querySelector('.proj-card').style.setProperty('--c', projectColor(p));
+  li.querySelector('.proj-name').textContent = complete ? `${p.name} ✓` : p.name;
+  const late = !complete && dayDiff(p.date) < 0;
+  li.querySelector('.proj-meta').textContent = [p.subject, `${late ? 'Atrasado · ' : ''}Entrega ${dueLabel(p.date).toLowerCase()}`].filter(Boolean).join(' · ');
+  li.querySelector('.proj-meta').classList.toggle('late', late);
+  li.querySelector('.bar i').style.setProperty('--prog', total ? done / total : 0);
+  li.querySelector('.proj-count').textContent = `${total ? `${done}/${total}` : 'Vacío'}${cost ? ` · ${money(cost)}` : ''}`;
+}
 
-/* Dibuja la lista reutilizando las tarjetas existentes y anima los cambios de
-   posición (técnica FLIP) para que todo se reacomode con suavidad. */
-function renderTasks(freshIds = []) {
+function rowEl(row) {
+  if (row.type === 'item') return itemEl();
+  if (row.type === 'project') return projEl();
+  const li = document.createElement('li');
+  li.className = { label: 'group-label', hint: 'list-hint', summary: 'list-summary' }[row.type];
+  li.dataset.type = row.type;
+  return li;
+}
+function updateRow(el, row) {
+  el.dataset.key = row.key;
+  if (row.type === 'item') updateItemEl(el, row.item, row.inProject);
+  else if (row.type === 'project') updateProjEl(el, row.project, row.items);
+  else if (row.type === 'label') el.innerHTML = `${row.color ? `<i style="--c:${row.color}"></i>` : ''}${esc(row.text)}`;
+  else if (row.type === 'summary') el.innerHTML = row.text;
+  else el.textContent = row.text;
+}
+
+/* Dibuja la lista reutilizando lo que ya existe y anima los cambios de posición
+   (técnica FLIP) para que todo se reacomode con suavidad. */
+function renderList(fresh = []) {
   const before = new Map();
   for (const el of taskList.children) before.set(el.dataset.key, el.getBoundingClientRect().top);
-
   const existing = new Map([...taskList.children].map((el) => [el.dataset.key, el]));
-  const sorted = [...state.tasks].sort(sortTasks);
-  const firstDone = sorted.findIndex((t) => t.done);
+  const rows = buildRows();
   let i = 0;
-  const place = (el) => {
+  for (const row of rows) {
+    let el = existing.get(row.key);
+    if (el && el.dataset.type === row.type) existing.delete(row.key);
+    else el = rowEl(row);
+    updateRow(el, row);
     if (taskList.children[i] !== el) taskList.insertBefore(el, taskList.children[i] || null);
     i++;
-  };
-  sorted.forEach((t, idx) => {
-    if (idx === firstDone) {
-      const label = existing.get('__done') || doneLabelEl();
-      existing.delete('__done');
-      place(label);
-    }
-    let li = existing.get(t.id);
-    if (li) existing.delete(t.id);
-    else { li = taskEl(); li.dataset.key = t.id; }
-    updateTaskEl(li, t);
-    place(li);
-  });
-  existing.forEach((el) => el.remove());
+  }
+  existing.forEach((el) => { if (openLi === el) openLi = null; el.remove(); });
 
   if (!reduceMotion) {
     for (const el of taskList.children) {
       const top = before.get(el.dataset.key);
       if (top === undefined) {
-        if (freshIds.includes(el.dataset.key) || el.dataset.key === '__done') {
+        if (fresh.includes(el.dataset.key) || el.dataset.type === 'label') {
           el.animate([{ opacity: 0, transform: 'translateY(18px) scale(.95)' }, { opacity: 1, transform: 'none' }], { duration: 560, easing: EASE });
         }
         continue;
@@ -398,7 +610,49 @@ function renderTasks(freshIds = []) {
       if (Math.abs(dy) > 0.5) el.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 560, easing: EASE });
     }
   }
-  emptyEl.classList.toggle('show', state.tasks.length === 0);
+
+  const hasContent = rows.some((r) => r.type === 'item' || r.type === 'project');
+  const v = viewOf();
+  emptyText.textContent = v.status !== 'all' || v.urgency !== 'all'
+    ? 'Nada con estos filtros'
+    : { task: 'Sin pendientes por ahora', material: 'Sin materiales por conseguir', project: 'Aún no hay proyectos' }[ui.tab];
+  emptyEl.classList.toggle('show', !hasContent);
+}
+
+// Las tarjetas toman el color de su materia: se repinta en cuanto cambia una materia
+const refreshTaskColors = () => renderList();
+
+// Cambiar de pestaña con un deslizamiento suave en la dirección del cambio.
+// El cambio de contenido va con temporizador (no con el fin de la animación) para que ocurra siempre.
+let tabOut = null, tabTimer = 0;
+function setTab(tab) {
+  if (tab === ui.tab) return;
+  const dir = TABS.indexOf(tab) > TABS.indexOf(ui.tab) ? 1 : -1;
+  ui.tab = tab;
+  setSeg(tabsEl, tab);
+  updateFilterBtn();
+  if (openLi) closeCard(openLi);
+  haptic(5);
+  clearTimeout(tabTimer);
+  tabOut?.cancel();
+  const swap = () => {
+    taskList.replaceChildren();
+    listWrap.scrollTop = 0;
+    renderList();
+  };
+  if (reduceMotion) { swap(); return; }
+  tabOut = taskList.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${-dir * 26}px)` }], { duration: 150, easing: 'ease-in', fill: 'forwards' });
+  tabTimer = setTimeout(() => {
+    swap();
+    taskList.animate([{ opacity: 0, transform: `translateX(${dir * 26}px)` }, { opacity: 1, transform: 'none' }], { duration: 380, easing: EASE });
+    tabOut.cancel();
+    tabOut = null;
+  }, 150);
+}
+setupSeg(tabsEl, setTab);
+
+function updateFilterBtn() {
+  filterBtn.classList.toggle('on', filtersActive(viewOf()));
 }
 
 function setCardX(li, x, animate, armed = false) {
@@ -430,7 +684,7 @@ function attachCardGestures(li) {
     decide: (g) => {
       if (Math.abs(g.dx) < Math.abs(g.dy) * 1.2) return false;
       base = li.classList.contains('swiped') ? DEL_W : 0;
-      if (g.dx < 0 && !base) return false;
+      if (g.dx < 0 && !base) return false; // hacia la izquierda: lo toma el gesto de Materias
       if (openLi && openLi !== li) closeCard(openLi);
       width = li.offsetWidth;
       armed = false;
@@ -445,7 +699,7 @@ function attachCardGestures(li) {
     },
     end: (g) => {
       const x = base + g.dx;
-      if (armed) deleteTask(li.dataset.key);
+      if (armed) deleteItem(li.dataset.key);
       else if (g.vx > 0.35 || (x > DEL_W * 0.5 && g.vx > -0.35)) openCard(li);
       else closeCard(li);
     },
@@ -457,50 +711,67 @@ document.addEventListener('pointerdown', (e) => {
 }, true);
 
 // Con el trackpad: dos dedos a la derecha sobre una tarjeta muestran "eliminar"
-const wheelCard = (e) => !nav.stack.length && e.target.closest('.task');
 wheelSwipe(taskList, {
-  right: { when: wheelCard, run: (e) => openCard(e.target.closest('.task')) },
-  left: { when: wheelCard, run: (e) => closeCard(e.target.closest('.task')) },
+  right: { when: (e) => !nav.stack.length && e.target.closest('.task'), run: (e) => openCard(e.target.closest('.task')) },
+  left: { when: (e) => !nav.stack.length && e.target.closest('.task.swiped'), run: (e) => closeCard(e.target.closest('.task')) },
 });
 
 taskList.addEventListener('click', (e) => {
+  const proj = e.target.closest('.proj');
+  if (proj) {
+    const id = proj.dataset.key.slice(2);
+    if (e.target.closest('.proj-add')) openAdd(null, false, { type: 'task', projectId: id });
+    else openProject(id);
+    return;
+  }
   const li = e.target.closest('.task');
   if (!li) return;
   const id = li.dataset.key;
-  if (e.target.closest('.task-del')) return deleteTask(id);
+  if (e.target.closest('.task-del')) return deleteItem(id);
   if (li.classList.contains('swiped')) return closeCard(li);
-  if (e.target.closest('.task-check')) return toggleDone(id);
+  if (e.target.closest('.task-check')) return toggleDone(id, e.target.closest('.task-check'));
   if (e.target.closest('.task-card')) openDetail(id);
 });
 taskList.addEventListener('keydown', (e) => {
-  if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('task-card')) {
-    e.preventDefault();
-    openDetail(e.target.closest('.task').dataset.key);
-  }
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  if (e.target.classList.contains('task-card')) { e.preventDefault(); openDetail(e.target.closest('.task').dataset.key); }
+  if (e.target.classList.contains('proj-card')) { e.preventDefault(); openProject(e.target.closest('.proj').dataset.key.slice(2)); }
 });
 
 let reorderTimer;
-function toggleDone(id) {
-  const t = state.tasks.find((x) => x.id === id);
+function toggleDone(id, fromEl) {
+  const t = itemById(id);
   if (!t) return;
+  const project = projectById(t.projectId);
+  const wasComplete = project && isComplete(project);
   t.done = !t.done;
   t.doneAt = t.done ? Date.now() : null;
   save();
   haptic(t.done ? [10, 40, 12] : 8);
-  const li = taskList.querySelector(`[data-key="${id}"]`);
-  if (li) updateTaskEl(li, t);
-  // Deja ver la palomita antes de reacomodar
+  const li = taskList.querySelector(`.task[data-key="${id}"]`);
+  if (li) updateItemEl(li, t, li.classList.contains('in-project'));
+  if (project) {
+    const head = taskList.querySelector(`.proj[data-key="p:${project.id}"]`);
+    if (head) updateProjEl(head, project, projectItems(project));
+  }
+  if (t.done) {
+    celebrate(fromEl || li?.querySelector('.task-check'));
+    if (project && !wasComplete && isComplete(project)) {
+      setTimeout(() => { celebrate(null, true); toast(`¡Terminaste "${project.name}"! 🎉`); }, 450);
+    }
+  }
+  // Deja ver la palomita y el confeti antes de reacomodar
   clearTimeout(reorderTimer);
-  reorderTimer = setTimeout(renderTasks, 700);
+  reorderTimer = setTimeout(() => renderList(), 800);
 }
 
-function deleteTask(id) {
+function deleteItem(id) {
   const idx = state.tasks.findIndex((t) => t.id === id);
   if (idx < 0) return;
-  const [task] = state.tasks.splice(idx, 1);
+  const [item] = state.tasks.splice(idx, 1);
   save();
   haptic(14);
-  const li = taskList.querySelector(`[data-key="${id}"]`);
+  const li = taskList.querySelector(`.task[data-key="${id}"]`);
   if (li) {
     if (openLi === li) openLi = null;
     li._card.style.transition = `transform .38s ${EASE}, opacity .3s ease`;
@@ -510,11 +781,29 @@ function deleteTask(id) {
     li._del.style.opacity = '0';
     li._del.style.transform = 'scale(.6)';
   }
-  setTimeout(() => renderTasks(), li ? 260 : 0);
-  toast('Tarea eliminada', 'Deshacer', () => {
-    state.tasks.splice(Math.min(idx, state.tasks.length), 0, task);
+  setTimeout(() => renderList(), li ? 260 : 0);
+  toast(item.kind === 'material' ? 'Material eliminado' : 'Tarea eliminada', 'Deshacer', () => {
+    state.tasks.splice(Math.min(idx, state.tasks.length), 0, item);
     save();
-    renderTasks([task.id]);
+    renderList([item.id]);
+  });
+}
+
+// Borra el proyecto junto con sus tareas y materiales (se puede deshacer)
+function deleteProject(id) {
+  const pi = state.projects.findIndex((p) => p.id === id);
+  if (pi < 0) return;
+  const [project] = state.projects.splice(pi, 1);
+  const removed = state.tasks.filter((t) => t.projectId === id);
+  state.tasks = state.tasks.filter((t) => t.projectId !== id);
+  save();
+  haptic(14);
+  renderList();
+  toast('Proyecto eliminado', 'Deshacer', () => {
+    state.projects.splice(pi, 0, project);
+    state.tasks.push(...removed);
+    save();
+    renderList([`p:${id}`]);
   });
 }
 
@@ -554,7 +843,7 @@ function createSheet(el, scrimEl) {
 function sheetDrag(sheet, handle, onClose) {
   let h = 0;
   gesture(handle, {
-    when: () => sheet.isOpen,
+    when: (e) => sheet.isOpen && !e.target.closest('input, textarea'),
     decide: (g) => Math.abs(g.dy) > Math.abs(g.dx),
     begin: () => { h = sheet.closedY(); },
     move: (g) => sheet.place(g.dy > 0 ? g.dy : -rubber(-g.dy, 24), false),
@@ -563,18 +852,19 @@ function sheetDrag(sheet, handle, onClose) {
   wheelSwipe(handle, { down: { when: () => sheet.isOpen, run: onClose } });
 }
 
-/* ───────────── Agregar / editar tarea ───────────── */
+/* ───────────── Agregar / editar ───────────── */
 
 const addSheet = createSheet($('#addSheet'), scrim);
-const addForm = $('#addForm'), fName = $('#fName'), fSubject = $('#fSubject'), fChips = $('#fChips');
-const fDate = $('#fDate'), fPrio = $('#fPrio'), prioText = $('#prioText');
+const addForm = $('#addForm'), fType = $('#fType'), fName = $('#fName'), fSubject = $('#fSubject'), fChips = $('#fChips');
+const fProjectWrap = $('#fProjectWrap'), fProjects = $('#fProjects'), fDateLbl = $('#fDateLbl'), fDate = $('#fDate'), fPrice = $('#fPrice');
+const fPrio = $('#fPrio'), prioText = $('#prioText');
 const fUrgent = $('#fUrgent'), urgText = $('#urgText'), fNotes = $('#fNotes'), fSubmit = $('#fSubmit');
-const form = { editingId: null, priority: 3, urgent: false };
+const form = { editing: null, type: 'task', priority: 3, urgent: false, projectId: null };
 
-function openAdd(task, fromDrag = false) {
+function openAdd(obj, fromDrag = false, preset = {}) {
   if (addSheet.isOpen) return;
   if (openLi) closeCard(openLi);
-  if (!fromDrag) fillForm(task);
+  if (!fromDrag) fillForm(obj, preset);
   addSheet.open(fromDrag);
   navOpen('add', closeAdd);
 }
@@ -583,31 +873,47 @@ function closeAdd() {
   navClosed('add');
 }
 
-function fillForm(task) {
-  form.editingId = task?.id ?? null;
-  fName.value = task?.name ?? '';
-  fSubject.value = task?.subject ?? '';
-  fDate.value = task?.date ?? todayISO();
-  fNotes.value = task?.notes ?? '';
-  setPriority(task?.priority ?? 3);
-  setUrgent(!!task?.urgent);
-  fSubmit.textContent = task ? 'Guardar' : 'Listo';
+// obj: tarea/material (tienen `kind`), proyecto, o nada para uno nuevo
+function fillForm(obj = null, preset = {}) {
+  const isProject = !!obj && !('kind' in obj);
+  form.editing = obj ? { id: obj.id, isProject } : null;
+  form.projectId = obj ? (isProject ? null : obj.projectId ?? null) : preset.projectId ?? null;
+  fType.hidden = !!obj;
+  fName.value = obj?.name ?? '';
+  fSubject.value = obj?.subject ?? projectById(form.projectId)?.subject ?? '';
+  fDate.value = obj?.date ?? (form.projectId ? projectById(form.projectId)?.date : null) ?? todayISO();
+  fNotes.value = obj?.notes ?? '';
+  fPrice.value = obj?.price != null ? String(obj.price) : '';
+  setPriority(obj?.priority ?? 3);
+  setUrgent(!!obj?.urgent);
+  setFormType(obj ? (isProject ? 'project' : obj.kind) : preset.type || ui.tab);
   renderChips();
   addForm.scrollTop = 0;
   autosize(fNotes);
 }
+
+function setFormType(type) {
+  form.type = type;
+  setSeg(fType, type);
+  addForm.querySelectorAll('[data-show]').forEach((el) => { el.hidden = !el.dataset.show.split(' ').includes(type); });
+  if (type !== 'project') { renderProjectChips(); fProjectWrap.hidden = !state.projects.length; }
+  fName.placeholder = { task: 'Nombre de la tarea', material: 'Nombre del material', project: 'Nombre del proyecto' }[type];
+  fDateLbl.textContent = { task: 'Fecha', material: '¿Para cuándo?', project: 'Fecha de entrega' }[type];
+  fSubmit.textContent = form.editing ? 'Guardar' : 'Listo';
+}
+setupSeg(fType, (val) => { if (val !== form.type) { haptic(5); setFormType(val); } });
 
 function autosize(ta) {
   ta.style.height = 'auto';
   ta.style.height = `${Math.min(ta.scrollHeight + 2, 220)}px`;
 }
 
-// Sugerencias de materia: las del horario y las que ya se usaron
+// Sugerencias de materia: las registradas y las que ya se usaron
 function subjectOptions() {
   const seen = new Map();
-  for (const s of state.schedule.subjects) if (norm(s.name)) seen.set(norm(s.name), { name: s.name.trim(), color: s.color });
-  for (const t of [...state.tasks].reverse()) {
-    if (norm(t.subject) && !seen.has(norm(t.subject))) seen.set(norm(t.subject), { name: t.subject.trim(), color: taskColor(t) });
+  for (const s of state.subjects) if (norm(s.name)) seen.set(norm(s.name), { name: s.name.trim(), color: s.color });
+  for (const t of [...state.tasks, ...state.projects].reverse()) {
+    if (norm(t.subject) && !seen.has(norm(t.subject))) seen.set(norm(t.subject), { name: t.subject.trim(), color: colorFor(t.subject) });
   }
   return [...seen.values()].slice(0, 14);
 }
@@ -628,9 +934,26 @@ fChips.addEventListener('click', (e) => {
   haptic(6);
 });
 fSubject.addEventListener('input', syncChips);
+
+function renderProjectChips() {
+  const list = [...state.projects].sort(compareProjects('date')).filter((p) => !isComplete(p) || p.id === form.projectId);
+  fProjects.innerHTML = `<button type="button" class="chip${form.projectId ? '' : ' active'}" data-id="">Ninguno</button>`
+    + list.map((p) => `<button type="button" class="chip${p.id === form.projectId ? ' active' : ''}" data-id="${p.id}" style="--c:${projectColor(p)}"><i></i>${esc(p.name)}</button>`).join('');
+}
+fProjects.addEventListener('click', (e) => {
+  const chip = e.target.closest('.chip');
+  if (!chip) return;
+  form.projectId = chip.dataset.id || null;
+  for (const c of fProjects.children) c.classList.toggle('active', c === chip);
+  const p = projectById(form.projectId);
+  if (p && !fSubject.value.trim() && p.subject) { fSubject.value = p.subject; syncChips(); }
+  haptic(6);
+});
+
 fNotes.addEventListener('input', () => autosize(fNotes));
 fName.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); fSubject.focus(); } });
 fSubject.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); fSubject.blur(); } });
+fPrice.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); fPrice.blur(); } });
 
 // Prioridad: el círculo sigue al dedo y al soltar se acomoda en la marca más cercana
 $('.prio-track').insertAdjacentHTML('afterend', PRIO_COLORS.map((c, i) => `<i class="prio-tick" style="left:${i * 25}%;--tc:${c}"></i>`).join(''));
@@ -684,26 +1007,40 @@ addForm.addEventListener('submit', (e) => {
   e.preventDefault();
   const name = fName.value.trim();
   if (!name) { shake(fName); fName.focus(); return; }
-  const data = {
-    name,
-    subject: fSubject.value.trim(),
-    date: fDate.value || todayISO(),
-    priority: form.priority,
-    urgent: form.urgent,
-    notes: fNotes.value.trim(),
-  };
-  const existing = form.editingId && state.tasks.find((t) => t.id === form.editingId);
-  let fresh = [];
-  if (existing) Object.assign(existing, data);
-  else {
-    const task = { id: uid(), done: false, doneAt: null, createdAt: Date.now(), ...data };
-    state.tasks.push(task);
-    fresh = [task.id];
+  const base = { name, subject: fSubject.value.trim(), date: fDate.value || todayISO(), notes: fNotes.value.trim() };
+  let fresh = [], target;
+  if (form.type === 'project') {
+    const existing = form.editing && projectById(form.editing.id);
+    if (existing) Object.assign(existing, base);
+    else {
+      const p = { id: uid(), createdAt: Date.now(), ...base };
+      state.projects.push(p);
+      fresh = [`p:${p.id}`];
+    }
+    target = 'project';
+  } else {
+    const data = {
+      ...base,
+      kind: form.type,
+      projectId: projectById(form.projectId) ? form.projectId : null,
+      price: form.type === 'material' ? parseNum(fPrice.value) : null,
+      priority: form.priority,
+      urgent: form.urgent,
+    };
+    const existing = form.editing && itemById(form.editing.id);
+    if (existing) Object.assign(existing, data);
+    else {
+      const item = { id: uid(), done: false, doneAt: null, createdAt: Date.now(), ...data };
+      state.tasks.push(item);
+      fresh = [item.id];
+    }
+    // Se queda en Proyectos si se agregó a un proyecto desde ahí; si no, va a su pestaña
+    target = ui.tab === 'project' && data.projectId ? 'project' : data.kind;
   }
   save();
   haptic(12);
   closeAdd();
-  setTimeout(() => renderTasks(fresh), 140);
+  setTimeout(() => { if (target !== ui.tab) setTab(target); else renderList(fresh); }, 140);
 });
 
 $('#addClose').innerHTML = ICON.x;
@@ -729,25 +1066,42 @@ gesture(swipeZone, {
 swipeZone.addEventListener('click', () => { if (!nav.stack.length) openAdd(null); });
 wheelSwipe(swipeZone, { up: { when: () => !nav.stack.length, run: () => openAdd(null) } });
 
-/* ───────────── Detalle de tarea ───────────── */
+/* ───────────── Detalle (tarea, material o proyecto) ───────────── */
 
 const detailSheet = createSheet($('#detailSheet'), scrim);
 const detailHero = $('#detailHero'), detailBody = $('#detailBody');
-let detailId = null;
 
 const linkify = (s) => esc(s).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+const notesBlock = (notes) => `
+  <div class="d-notes">
+    <small>Notas</small>
+    <p class="${notes ? '' : 'muted'}">${notes ? linkify(notes) : 'Sin notas'}</p>
+  </div>`;
+const dateRow = (label, iso, late) => `
+  <div class="d-row">
+    <span class="d-ico">${ICON.cal}</span>
+    <div class="d-txt"><small>${label}</small><b>${longDate(iso)}</b></div>
+    <span class="d-tag${late ? ' warn' : ''}">${late ? 'Atrasado' : dueRelative(iso)}</span>
+  </div>`;
 
-function fillDetail(t) {
-  const late = !t.done && dayDiff(t.date) < 0;
+function fillItemDetail(t) {
+  const project = projectById(t.projectId);
   detailHero.style.setProperty('--c', taskColor(t));
   $('#dName').textContent = t.name;
-  $('#dSubject').textContent = t.subject || 'Sin materia';
+  $('#dSubject').textContent = [KIND_NAME[t.kind], t.subject].filter(Boolean).join(' · ');
   detailBody.innerHTML = `
+    ${dateRow(t.kind === 'material' ? 'Para cuándo' : 'Fecha', t.date, !t.done && dayDiff(t.date) < 0)}
+    ${project ? `
+    <button class="d-row d-link" type="button" data-act="open-project">
+      <span class="d-ico">${ICON.folder}</span>
+      <div class="d-txt"><small>Proyecto</small><b>${esc(project.name)}</b></div>
+      <span class="d-tag">Ver</span>
+    </button>` : ''}
+    ${t.kind === 'material' ? `
     <div class="d-row">
-      <span class="d-ico">${ICON.cal}</span>
-      <div class="d-txt"><small>Fecha</small><b>${longDate(t.date)}</b></div>
-      <span class="d-tag${late ? ' warn' : ''}">${late ? 'Atrasada' : dueRelative(t.date)}</span>
-    </div>
+      <span class="d-ico">${ICON.tag}</span>
+      <div class="d-txt"><small>Precio</small><b>${t.price != null ? money(t.price) : 'Sin precio'}</b></div>
+    </div>` : ''}
     <div class="d-row">
       <span class="d-ico">${ICON.flag}</span>
       <div class="d-txt"><small>Prioridad</small><b>${PRIO_TEXT[t.priority]}</b></div>
@@ -758,22 +1112,69 @@ function fillDetail(t) {
       <div class="d-txt"><small>Urgente</small><b>${t.urgent ? 'Sí' : 'No'}</b></div>
       ${t.urgent ? '<span class="d-glow"></span>' : ''}
     </div>
-    <div class="d-notes">
-      <small>Notas</small>
-      <p class="${t.notes ? '' : 'muted'}">${t.notes ? linkify(t.notes) : 'Sin notas'}</p>
-    </div>
+    ${notesBlock(t.notes)}
     <div class="d-actions">
       <button class="btn-soft" type="button" data-act="edit">${ICON.pencil}Editar</button>
-      <button class="btn-primary" type="button" data-act="done">${t.done ? 'Desmarcar' : 'Completar'}</button>
+      <button class="btn-primary" type="button" data-act="done">${t.done ? 'Desmarcar' : t.kind === 'material' ? 'Ya lo tengo' : 'Completar'}</button>
     </div>`;
-  detailBody.scrollTop = 0;
 }
 
+function fillProjectDetail(p) {
+  const items = projectItems(p);
+  const done = items.filter((t) => t.done).length;
+  const cost = sum(items.filter((t) => t.kind === 'material' && t.price != null).map((t) => t.price));
+  const pendingCost = sum(items.filter((t) => t.kind === 'material' && !t.done && t.price != null).map((t) => t.price));
+  const sorted = [...items.filter((t) => !t.done).sort(compareItems('date')), ...items.filter((t) => t.done).sort(byDoneAt)];
+  detailHero.style.setProperty('--c', projectColor(p));
+  $('#dName').textContent = p.name;
+  $('#dSubject').textContent = ['Proyecto', p.subject].filter(Boolean).join(' · ');
+  detailBody.innerHTML = `
+    ${dateRow('Entrega', p.date, !isComplete(p) && dayDiff(p.date) < 0)}
+    <div class="d-row">
+      <span class="d-ico">${ICON.check}</span>
+      <div class="d-txt"><small>Avance</small><b>${items.length ? `${done} de ${items.length} listas` : 'Sin tareas todavía'}</b>
+        <span class="d-bar"><i style="--prog:${items.length ? done / items.length : 0}"></i></span></div>
+    </div>
+    ${cost ? `
+    <div class="d-row">
+      <span class="d-ico">${ICON.tag}</span>
+      <div class="d-txt"><small>Materiales</small><b>${money(cost)}${pendingCost && pendingCost !== cost ? ` · faltan ${money(pendingCost)}` : ''}</b></div>
+    </div>` : ''}
+    ${notesBlock(p.notes)}
+    <div class="d-items">
+      ${sorted.map((t) => `
+      <div class="d-item${t.done ? ' done' : ''}">
+        <button class="d-check" type="button" data-act="toggle-item" data-id="${t.id}" aria-label="${t.done ? 'Marcar como pendiente' : 'Marcar como hecha'}">${ICON.check}</button>
+        <button class="d-item-name" type="button" data-act="open-item" data-id="${t.id}">
+          <b>${esc(t.name)}</b><small>${KIND_NAME[t.kind]} · ${dueLabel(t.date)}${t.price != null && t.kind === 'material' ? ` · ${money(t.price)}` : ''}</small>
+        </button>
+      </div>`).join('')}
+    </div>
+    <div class="d-actions">
+      <button class="btn-soft" type="button" data-act="add-task">${ICON.plus}Tarea</button>
+      <button class="btn-soft" type="button" data-act="add-material">${ICON.plus}Material</button>
+    </div>
+    <button class="btn-primary" type="button" data-act="edit-project">Editar proyecto</button>`;
+}
+
+function fillDetail() {
+  const d = ui.detail;
+  if (d.kind === 'project') fillProjectDetail(projectById(d.id));
+  else fillItemDetail(itemById(d.id));
+}
 function openDetail(id) {
-  const t = state.tasks.find((x) => x.id === id);
-  if (!t || nav.stack.length) return;
-  detailId = id;
-  fillDetail(t);
+  if (!itemById(id) || nav.stack.length) return;
+  ui.detail = { kind: 'item', id };
+  fillDetail();
+  detailBody.scrollTop = 0;
+  detailSheet.open();
+  navOpen('detail', closeDetail);
+}
+function openProject(id) {
+  if (!projectById(id) || nav.stack.length) return;
+  ui.detail = { kind: 'project', id };
+  fillDetail();
+  detailBody.scrollTop = 0;
   detailSheet.open();
   navOpen('detail', closeDetail);
 }
@@ -781,20 +1182,43 @@ function closeDetail() {
   detailSheet.close();
   navClosed('detail');
 }
+// Cambia lo que muestra la hoja de detalle sin cerrarla (de proyecto a tarea y viceversa)
+function showInDetail(kind, id) {
+  ui.detail = { kind, id };
+  const el = detailSheet.el;
+  el.animate([{ opacity: 1 }, { opacity: 0.4 }, { opacity: 1 }], { duration: 320, easing: 'ease-out' });
+  fillDetail();
+  detailBody.scrollTop = 0;
+}
+// De la hoja de detalle pasa al formulario sin apagar el fondo
+function detailToForm(obj, preset) {
+  detailSheet.close(true);
+  fillForm(obj, preset);
+  addSheet.open();
+  navReplace('detail', 'add', closeAdd);
+}
 
 detailBody.addEventListener('click', (e) => {
-  const act = e.target.closest('[data-act]')?.dataset.act;
-  const t = state.tasks.find((x) => x.id === detailId);
-  if (!act || !t) return;
-  if (act === 'done') {
-    closeDetail();
-    setTimeout(() => toggleDone(t.id), 220);
-  } else if (act === 'edit') {
-    // Pasa del detalle al formulario sin apagar el fondo
-    detailSheet.close(true);
-    fillForm(t);
-    addSheet.open();
-    navReplace('detail', 'add', closeAdd);
+  const btn = e.target.closest('[data-act]');
+  if (!btn) return;
+  const d = ui.detail, act = btn.dataset.act;
+  if (d.kind === 'item') {
+    const t = itemById(d.id);
+    if (!t) return;
+    if (act === 'done') { closeDetail(); setTimeout(() => toggleDone(t.id), 240); }
+    if (act === 'edit') detailToForm(t);
+    if (act === 'open-project') showInDetail('project', t.projectId);
+    return;
+  }
+  const p = projectById(d.id);
+  if (!p) return;
+  if (act === 'edit-project') detailToForm(p);
+  if (act === 'add-task' || act === 'add-material') detailToForm(null, { type: act === 'add-task' ? 'task' : 'material', projectId: p.id });
+  if (act === 'open-item') showInDetail('item', btn.dataset.id);
+  if (act === 'toggle-item') {
+    const t = itemById(btn.dataset.id);
+    toggleDone(btn.dataset.id, btn);
+    if (t) fillDetail();
   }
 });
 
@@ -802,14 +1226,101 @@ $('#detailClose').innerHTML = ICON.x;
 $('#detailDelete').innerHTML = ICON.trash;
 $('#detailClose').addEventListener('click', closeDetail);
 $('#detailDelete').addEventListener('click', () => {
-  const id = detailId;
+  const { kind, id } = ui.detail;
   closeDetail();
-  setTimeout(() => deleteTask(id), 220);
+  setTimeout(() => (kind === 'project' ? deleteProject(id) : deleteItem(id)), 220);
 });
 sheetDrag(detailSheet, detailHero, closeDetail);
 
 scrim.addEventListener('click', () => {
-  if (topIs('add') || topIs('detail')) closeTop();
+  if (topIs('add') || topIs('detail') || topIs('subject')) closeTop();
+});
+
+/* ───────────── Ordenar y filtrar ───────────── */
+
+filterBtn.innerHTML = ICON.sliders;
+filterBtn.addEventListener('click', openFilters);
+
+function openFilters() {
+  if (nav.stack.length) return;
+  const v = viewOf();
+  const group = (key, label, opts) => `
+    <p class="opt-label">${label}</p>
+    <div class="opt-row" data-key="${key}">${opts.map(([val, text]) => `<button type="button" class="opt${v[key] === val ? ' active' : ''}" data-val="${val}">${text}</button>`).join('')}</div>`;
+  miniTitle.textContent = `Ordenar ${{ task: 'tareas', material: 'materiales', project: 'proyectos' }[ui.tab]}`;
+  miniBody.innerHTML = `
+    ${group('sort', 'Ordenar por', SORT_OPTS)}
+    ${group('status', 'Mostrar', STATUS_OPTS)}
+    ${group('urgency', 'Urgencia', URGENCY_OPTS)}
+    <button type="button" class="link-btn" data-act="reset">Restablecer</button>`;
+  miniBody.onclick = (e) => {
+    const opt = e.target.closest('.opt');
+    if (opt) {
+      const row = opt.parentElement;
+      v[row.dataset.key] = opt.dataset.val;
+      for (const o of row.children) o.classList.toggle('active', o === opt);
+    } else if (e.target.closest('[data-act="reset"]')) {
+      Object.assign(v, VIEW_DEFAULT);
+      miniBody.querySelectorAll('.opt-row').forEach((row) => {
+        for (const o of row.children) o.classList.toggle('active', o.dataset.val === v[row.dataset.key]);
+      });
+    } else return;
+    haptic(6);
+    save();
+    updateFilterBtn();
+    renderList();
+  };
+  openMini();
+}
+
+/* ───────────── Pantallas laterales ───────────── */
+
+// p = 0 (cerrada) … 1 (abierta). La pantalla principal se recorre un poco hacia el otro lado.
+function sideProgress(screen, p, animate) {
+  const t = animate ? '' : 'none';
+  const dir = screen === scheduleEl ? -1 : 1; // el horario entra por la izquierda, materias por la derecha
+  screen.style.transition = t;
+  mainEl.style.transition = t;
+  mainDim.style.transition = t;
+  screen.style.transform = `translate3d(${dir * (1 - p) * 100}%, 0, 0)`;
+  mainEl.style.transform = p > 0 ? `translate3d(${-dir * p * 22}%, 0, 0)` : '';
+  mainDim.style.opacity = String(p);
+}
+
+/* Desde la pantalla principal: deslizar a la derecha abre el horario y a la izquierda
+   abre materias (desde los bordes o desde cualquier parte que no sea una tarjeta). */
+const sideSwipe = {
+  when: (e) => nav.stack.length === 0 && !e.target.closest('.swipe-zone'),
+  decide: (g) => {
+    if (Math.abs(g.dx) < Math.abs(g.dy) * 1.1) return false;
+    const card = g.target.closest?.('.task');
+    if (g.dx > 0) {
+      if (card) return false; // a la derecha sobre una tarjeta: botón de eliminar
+      g.screen = scheduleEl;
+      refreshSchedule();
+    } else {
+      if (card?.classList.contains('swiped')) return false;
+      g.screen = matEl;
+    }
+    return true;
+  },
+  move: (g) => {
+    const toward = g.screen === scheduleEl ? 1 : -1; // dirección del dedo que abre la pantalla
+    sideProgress(g.screen, clamp((g.dx * toward) / appW(), 0, 1), false);
+  },
+  end: (g) => {
+    const toward = g.screen === scheduleEl ? 1 : -1;
+    const dist = g.dx * toward, vel = g.vx * toward;
+    if ((dist > appW() * 0.25 && vel > -0.2) || vel > 0.35) (g.screen === scheduleEl ? openSchedule : openMaterias)();
+    else sideProgress(g.screen, 0, true);
+  },
+};
+gesture(mainEl, sideSwipe);
+gesture(edgeZone, sideSwipe);
+gesture(edgeZoneR, sideSwipe);
+wheelSwipe(mainEl, {
+  right: { when: (e) => !nav.stack.length && !e.target.closest('.task'), run: () => openSchedule() },
+  left: { when: (e) => !nav.stack.length && !e.target.closest('.task.swiped'), run: () => openMaterias() },
 });
 
 /* ───────────── Horario ───────────── */
@@ -829,25 +1340,15 @@ schBackBtn.addEventListener('click', closeSchedule);
 $('#openSched').innerHTML = ICON.cal;
 $('#openSched').addEventListener('click', openSchedule);
 
-// p = 0 (cerrado) … 1 (abierto). La pantalla principal se recorre un poco detrás.
-function schProgress(p, animate) {
-  const t = animate ? '' : 'none';
-  scheduleEl.style.transition = t;
-  mainEl.style.transition = t;
-  mainDim.style.transition = t;
-  scheduleEl.style.transform = `translate3d(${(p - 1) * 100}%, 0, 0)`;
-  mainEl.style.transform = p > 0 ? `translate3d(${p * 22}%, 0, 0)` : '';
-  mainDim.style.opacity = String(p);
-}
-
 function openSchedule() {
-  if (sch.open) { schProgress(1, true); return; }
+  if (sch.open) { sideProgress(scheduleEl, 1, true); return; }
+  if (nav.stack.length) return;
   if (openLi) closeCard(openLi);
   refreshSchedule();
   sch.open = true;
   scheduleEl.inert = false;
   mainEl.inert = true;
-  schProgress(1, true);
+  sideProgress(scheduleEl, 1, true);
   navOpen('schedule', closeSchedule);
 }
 function closeSchedule() {
@@ -855,13 +1356,13 @@ function closeSchedule() {
   sch.open = false;
   scheduleEl.inert = true;
   mainEl.inert = false;
-  schProgress(0, true);
+  sideProgress(scheduleEl, 0, true);
   navClosed('schedule');
 }
 
 function scheduleStatus() {
   const S = state.schedule, today = new Date().getDay(), m = nowMinutes();
-  if (!S.subjects.some((s) => s.name.trim())) return 'Desliza el título hacia abajo para armar tu horario';
+  if (!state.subjects.some((s) => s.name.trim())) return 'Desliza el título hacia abajo para armar tu horario';
   if (!S.days.includes(today)) return 'Hoy no hay clases 🌸';
   const classes = S.slots
     .map((slot) => ({ slot, subj: subjectById(S.cells[`${slot.id}:${today}`]) }))
@@ -904,7 +1405,7 @@ function renderDayToggles() {
 }
 
 function renderSubjects() {
-  const subjects = state.schedule.subjects;
+  const subjects = state.subjects;
   subjList.innerHTML = subjects.length
     ? subjects.map((s) => `
       <div class="subj-row" data-id="${s.id}">
@@ -934,7 +1435,6 @@ function setEditing(on) {
   if (!on) {
     if (document.activeElement && scheduleEl.contains(document.activeElement)) document.activeElement.blur();
     cleanupSubjects();
-    refreshTaskColors();
   }
   scheduleEl.classList.toggle('editing', on);
   scheduleEl.querySelectorAll('.reveal').forEach((r) => { r.inert = !on; });
@@ -945,65 +1445,59 @@ function setEditing(on) {
   renderGrid();
   renderSubjects();
   updateSchSub();
+  if (!on) subjectsChanged({ skip: 'schedule' });
   save();
   haptic(10);
   if (on) navOpen('schedEdit', () => setEditing(false));
   else navClosed('schedEdit');
 }
 
-// Las materias sin nombre se descartan al terminar de editar
+// Una materia sin nombre y sin nada guardado se descarta; si tiene datos, se le pone nombre
+const usedInSchedule = (id) => Object.values(state.schedule.cells).includes(id);
+const subjectHasData = (s) => s.exams.length || s.reminders.length || s.grades.some((g) => g != null) || usedInSchedule(s.id);
 function cleanupSubjects() {
-  const S = state.schedule;
-  const blank = new Set(S.subjects.filter((s) => !s.name.trim()).map((s) => s.id));
-  S.subjects = S.subjects.filter((s) => !blank.has(s.id));
-  S.subjects.forEach((s) => { s.name = s.name.trim(); });
-  for (const k of Object.keys(S.cells)) if (blank.has(S.cells[k])) delete S.cells[k];
+  state.subjects = state.subjects.filter((s) => s.name.trim() || subjectHasData(s));
+  for (const s of state.subjects) s.name = s.name.trim() || 'Materia sin nombre';
+  const ids = new Set(state.subjects.map((s) => s.id));
+  for (const k of Object.keys(state.schedule.cells)) if (!ids.has(state.schedule.cells[k])) delete state.schedule.cells[k];
 }
 
 function nextColor() {
-  const used = new Set(state.schedule.subjects.map((s) => s.color));
-  return PASTELS.find((c) => !used.has(c)) || PASTELS[state.schedule.subjects.length % PASTELS.length];
+  const used = new Set(state.subjects.map((s) => s.color));
+  return PASTELS.find((c) => !used.has(c)) || PASTELS[state.subjects.length % PASTELS.length];
 }
 function addSubject(name) {
   const found = findSubject(name);
   if (found) return found;
-  const s = { id: uid(), name, color: nextColor() };
-  state.schedule.subjects.push(s);
-  save();
-  refreshTaskColors();
+  const s = newSubject(name, nextColor());
+  state.subjects.push(s);
+  subjectsChanged();
   return s;
 }
 
-/* Abrir el horario deslizando hacia la derecha: desde el borde izquierdo o desde
-   cualquier parte de la pantalla principal que no sea una tarjeta (el saludo, el
-   espacio vacío…). Así funciona aunque Android se quede con el borde. */
-const openScheduleSwipe = {
-  when: (e) => nav.stack.length === 0 && !e.target.closest('.task, .swipe-zone, button'),
-  decide: (g) => g.dx > 0 && g.dx > Math.abs(g.dy) * 1.1,
-  begin: () => refreshSchedule(),
-  move: (g) => schProgress(clamp(g.dx / appW(), 0, 1), false),
-  end: (g) => {
-    if ((g.dx > appW() * 0.25 && g.vx > -0.2) || g.vx > 0.35) openSchedule();
-    else schProgress(0, true);
-  },
-};
-gesture(edgeZone, openScheduleSwipe);
-gesture(mainEl, openScheduleSwipe);
-wheelSwipe(mainEl, { right: { when: (e) => !nav.stack.length && !e.target.closest('.task'), run: openSchedule } });
+// Después de cambiar materias: horario, lista de materias, tarjetas y avisos al día
+function subjectsChanged({ skip } = {}) {
+  save();
+  renderGrid();
+  updateSchSub();
+  if (skip !== 'schedule') renderSubjects();
+  renderMaterias();
+  refreshTaskColors();
+  renderHeroNote();
+}
 
 // Cerrar el horario: deslizar hacia la izquierda en cualquier parte
 function endScheduleSwipe(g) {
   if ((-g.dx > appW() * 0.25 && g.vx < 0.2) || g.vx < -0.35) closeSchedule();
-  else schProgress(1, true);
+  else sideProgress(scheduleEl, 1, true);
 }
 gesture(scheduleEl, {
   when: (e) => topIs('schedule') && !schHead.contains(e.target),
   decide: (g) => g.dx < 0 && -g.dx > Math.abs(g.dy) * 1.1,
-  move: (g) => schProgress(1 + clamp(g.dx / appW(), -1, 0), false),
+  move: (g) => sideProgress(scheduleEl, 1 + clamp(g.dx / appW(), -1, 0), false),
   end: endScheduleSwipe,
 });
 wheelSwipe(scheduleEl, { left: { when: () => topIs('schedule'), run: closeSchedule } });
-wheelSwipe(schHead, { down: { when: () => topIs('schedule') || topIs('schedEdit'), run: () => setEditing(!sch.editing) } });
 
 // Jalar el título hacia abajo entra (o sale) del modo edición
 const PULL_AT = 52;
@@ -1015,7 +1509,7 @@ gesture(schHead, {
     return false;
   },
   move: (g) => {
-    if (g.mode === 'close') { schProgress(1 + clamp(g.dx / appW(), -1, 0), false); return; }
+    if (g.mode === 'close') { sideProgress(scheduleEl, 1 + clamp(g.dx / appW(), -1, 0), false); return; }
     const y = rubber(Math.max(0, g.dy), 240);
     const p = clamp(y / PULL_AT, 0, 1);
     schBody.style.transition = 'none';
@@ -1041,6 +1535,7 @@ gesture(schHead, {
     if (g.armed) setEditing(!sch.editing);
   },
 });
+wheelSwipe(schHead, { down: { when: () => topIs('schedule') || topIs('schedEdit'), run: () => setEditing(!sch.editing) } });
 
 schGrid.addEventListener('click', (e) => {
   if (!topIs('schedEdit')) return;
@@ -1082,8 +1577,8 @@ $('#addSlot').addEventListener('click', () => {
 });
 
 $('#addSubj').addEventListener('click', () => {
-  const s = { id: uid(), name: '', color: nextColor() };
-  state.schedule.subjects.push(s);
+  const s = newSubject('', nextColor());
+  state.subjects.push(s);
   renderSubjects();
   const row = subjList.querySelector(`[data-id="${s.id}"]`);
   row.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 420, easing: EASE });
@@ -1092,48 +1587,38 @@ $('#addSubj').addEventListener('click', () => {
 
 subjList.addEventListener('click', (e) => {
   const row = e.target.closest('.subj-row');
-  const s = row && state.schedule.subjects.find((x) => x.id === row.dataset.id);
+  const s = row && subjectById(row.dataset.id);
   if (!s) return;
   const colorBtn = e.target.closest('.subj-color');
   if (colorBtn) {
     s.color = PASTELS[(PASTELS.indexOf(s.color) + 1) % PASTELS.length];
     colorBtn.style.setProperty('--c', s.color);
-    save();
     haptic(6);
-    renderGrid();
-    refreshTaskColors();
+    subjectsChanged({ skip: 'schedule' });
   } else if (e.target.closest('.subj-del')) removeSubject(s.id);
 });
 subjList.addEventListener('input', (e) => {
   const row = e.target.closest('.subj-row');
-  const s = row && state.schedule.subjects.find((x) => x.id === row.dataset.id);
+  const s = row && subjectById(row.dataset.id);
   if (!s) return;
   s.name = e.target.value;
-  save();
-  renderGrid();
-  refreshTaskColors();
+  subjectsChanged({ skip: 'schedule' });
 });
 subjList.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
 
 function removeSubject(id) {
-  const S = state.schedule, idx = S.subjects.findIndex((s) => s.id === id);
+  const idx = state.subjects.findIndex((s) => s.id === id);
   if (idx < 0) return;
-  const [subject] = S.subjects.splice(idx, 1);
+  const [subject] = state.subjects.splice(idx, 1);
   const cells = {};
-  for (const k of Object.keys(S.cells)) if (S.cells[k] === id) { cells[k] = id; delete S.cells[k]; }
-  save();
+  for (const k of Object.keys(state.schedule.cells)) if (state.schedule.cells[k] === id) { cells[k] = id; delete state.schedule.cells[k]; }
   haptic(12);
-  renderGrid();
-  renderSubjects();
-  refreshTaskColors();
-  if (subject.name.trim()) {
+  subjectsChanged();
+  if (subject.name.trim() || subjectHasData(subject)) {
     toast('Materia eliminada', 'Deshacer', () => {
-      S.subjects.splice(idx, 0, subject);
-      Object.assign(S.cells, cells);
-      save();
-      renderGrid();
-      renderSubjects();
-      refreshTaskColors();
+      state.subjects.splice(idx, 0, subject);
+      Object.assign(state.schedule.cells, cells);
+      subjectsChanged();
     });
   }
 }
@@ -1157,7 +1642,301 @@ function removeSlot(slotId) {
 
 $('#schDone').addEventListener('click', () => setEditing(false));
 
-/* ───────────── Hoja pequeña: elegir materia / editar hora ───────────── */
+/* ───────────── Materias ───────────── */
+
+const matEl = $('#materias'), matList = $('#matList'), matSub = $('#matSub');
+const mat = { open: false };
+$('#matBackBtn').innerHTML = ICON.list;
+$('#matAddBtn').innerHTML = ICON.plus;
+$('#openMat').innerHTML = ICON.book;
+$('#matBackBtn').addEventListener('click', closeMaterias);
+$('#matAddBtn').addEventListener('click', createSubject);
+$('#openMat').addEventListener('click', openMaterias);
+
+function openMaterias() {
+  if (mat.open) { sideProgress(matEl, 1, true); return; }
+  if (nav.stack.length) return;
+  if (openLi) closeCard(openLi);
+  mat.open = true;
+  matEl.inert = false;
+  mainEl.inert = true;
+  sideProgress(matEl, 1, true);
+  navOpen('materias', closeMaterias);
+}
+function closeMaterias() {
+  mat.open = false;
+  matEl.inert = true;
+  mainEl.inert = false;
+  sideProgress(matEl, 0, true);
+  navClosed('materias');
+}
+
+const nextExam = (s) => [...s.exams].filter((e) => dayDiff(e.date) >= 0).sort(byDate)[0];
+
+function renderMaterias() {
+  const subjects = state.subjects.filter((s) => s.name.trim());
+  const avgs = subjects.map((s) => average(s.grades)).filter((a) => a != null);
+  matSub.textContent = !subjects.length
+    ? 'Toca + para agregar tu primera materia'
+    : avgs.length ? `Promedio general: ${fmtGrade(sum(avgs) / avgs.length)}` : 'Aún sin calificaciones';
+  matList.innerHTML = subjects.map((s) => {
+    const avg = average(s.grades), exam = nextExam(s);
+    const rems = s.reminders.filter((r) => dayDiff(r.date) >= 0).length;
+    return `
+    <button class="mat-card" type="button" data-id="${s.id}" style="--c:${s.color}">
+      <span class="mat-top"><b>${esc(s.name)}</b>${avg != null ? `<span class="avg ${gradeClass(avg, s.grades)}">${fmtGrade(avg)}</span>` : ''}</span>
+      <span class="mat-meta">${exam ? `📚 ${esc(exam.title || 'Examen')} · ${dueLabel(exam.date).toLowerCase()}` : 'Sin exámenes próximos'}${rems ? ` · 🔔 ${rems}` : ''}</span>
+      <span class="mat-grades">${s.grades.map((g, i) => `<i>P${i + 1} <b>${g ?? '—'}</b></i>`).join('')}</span>
+    </button>`;
+  }).join('') + '<button class="ghost-btn" type="button" data-act="add">+ Nueva materia</button>';
+}
+matList.addEventListener('click', (e) => {
+  if (e.target.closest('[data-act="add"]')) return createSubject();
+  const card = e.target.closest('.mat-card');
+  if (card) openSubject(card.dataset.id);
+});
+
+// Cerrar materias: deslizar hacia la derecha en cualquier parte
+gesture(matEl, {
+  when: (e) => topIs('materias') && !e.target.closest('input, textarea'),
+  decide: (g) => g.dx > 0 && g.dx > Math.abs(g.dy) * 1.1,
+  move: (g) => sideProgress(matEl, 1 - clamp(g.dx / appW(), 0, 1), false),
+  end: (g) => {
+    if ((g.dx > appW() * 0.25 && g.vx > -0.2) || g.vx > 0.35) closeMaterias();
+    else sideProgress(matEl, 1, true);
+  },
+});
+wheelSwipe(matEl, { right: { when: () => topIs('materias'), run: closeMaterias } });
+
+/* Hoja de una materia */
+
+const subjSheet = createSheet($('#subjectSheet'), scrim);
+const subjHero = $('#subjHero'), subjName = $('#subjName'), subjColors = $('#subjColors'), subjBody = $('#subjBody');
+$('#subjClose').innerHTML = ICON.x;
+$('#subjDelete').innerHTML = ICON.trash;
+
+function createSubject() {
+  if (!topIs('materias')) return;
+  const s = newSubject('', nextColor());
+  state.subjects.push(s);
+  save();
+  openSubject(s.id, true);
+}
+function openSubject(id, focusName = false) {
+  const s = subjectById(id);
+  if (!s || !topIs('materias')) return;
+  ui.subjectId = id;
+  ui.subjectPrevName = s.name;
+  fillSubject();
+  subjBody.scrollTop = 0;
+  subjSheet.open();
+  navOpen('subject', closeSubject);
+  if (focusName) setTimeout(() => subjName.focus(), 420);
+}
+function closeSubject() {
+  subjSheet.close();
+  navClosed('subject');
+  const s = subjectById(ui.subjectId);
+  if (s && !s.name.trim()) {
+    if (subjectHasData(s)) s.name = ui.subjectPrevName || 'Materia sin nombre';
+    else state.subjects = state.subjects.filter((x) => x !== s);
+  }
+  subjectsChanged();
+}
+
+function remindLabel(v) {
+  return (REMIND_OPTS.find(([val]) => val === v) || REMIND_OPTS[0])[1];
+}
+function fillSubject() {
+  const s = subjectById(ui.subjectId);
+  if (!s) return;
+  subjHero.style.setProperty('--c', s.color);
+  subjName.value = s.name;
+  subjColors.innerHTML = PASTELS.map((c) => `<button type="button" class="swatch${c === s.color ? ' active' : ''}" data-color="${c}" style="--c:${c}" aria-label="Color"></button>`).join('');
+  const avg = average(s.grades);
+  const exams = [...s.exams].sort((a, b) => (dayDiff(a.date) < 0) - (dayDiff(b.date) < 0) || byDate(a, b));
+  const rems = [...s.reminders].sort((a, b) => (dayDiff(a.date) < 0) - (dayDiff(b.date) < 0) || byDate(a, b));
+  subjBody.innerHTML = `
+    <p class="sec-label">Calificaciones</p>
+    <div class="grades">
+      ${PARTIALS.map((label, i) => `<label class="grade"><span>${label}</span><input class="input grade-in" data-i="${i}" inputmode="decimal" maxlength="5" value="${s.grades[i] ?? ''}" placeholder="—"></label>`).join('')}
+      <div class="grade avg-box"><span>Promedio</span><b id="subjAvg" class="${avg != null ? gradeClass(avg, s.grades) : ''}">${avg != null ? fmtGrade(avg) : '—'}</b></div>
+    </div>
+    <p class="sec-label">Exámenes</p>
+    ${exams.map((e) => `
+    <button class="row-item${dayDiff(e.date) < 0 ? ' past' : ''}" type="button" data-exam="${e.id}">
+      <span class="row-ico">📚</span>
+      <span class="row-txt"><b>${esc(e.title || 'Examen')}</b><small>${longDate(e.date)}${e.time ? ` · ${fmtTime(e.time)}` : ''}${e.remind >= 0 ? ` · 🔔 ${remindLabel(e.remind).toLowerCase()}` : ''}</small></span>
+      <span class="d-tag">${dueRelative(e.date)}</span>
+    </button>`).join('') || '<p class="row-empty">Sin exámenes registrados</p>'}
+    <button class="ghost-btn" type="button" data-act="add-exam">+ Agregar examen</button>
+    <p class="sec-label">Recordatorios</p>
+    ${rems.map((r) => `
+    <button class="row-item${dayDiff(r.date) < 0 ? ' past' : ''}" type="button" data-rem="${r.id}">
+      <span class="row-ico">🔔</span>
+      <span class="row-txt"><b>${esc(r.text)}</b><small>${longDate(r.date)}${r.time ? ` · ${fmtTime(r.time)}` : ''}</small></span>
+      <span class="d-tag">${dueRelative(r.date)}</span>
+    </button>`).join('') || '<p class="row-empty">Sin recordatorios</p>'}
+    <button class="ghost-btn" type="button" data-act="add-rem">+ Agregar recordatorio</button>`;
+}
+
+subjName.addEventListener('input', () => {
+  const s = subjectById(ui.subjectId);
+  if (!s) return;
+  s.name = subjName.value;
+  subjectsChanged();
+});
+subjName.addEventListener('keydown', (e) => { if (e.key === 'Enter') subjName.blur(); });
+subjColors.addEventListener('click', (e) => {
+  const sw = e.target.closest('.swatch');
+  const s = subjectById(ui.subjectId);
+  if (!sw || !s) return;
+  s.color = sw.dataset.color;
+  subjHero.style.setProperty('--c', s.color);
+  for (const b of subjColors.children) b.classList.toggle('active', b === sw);
+  haptic(6);
+  subjectsChanged();
+});
+subjBody.addEventListener('input', (e) => {
+  const input = e.target.closest('.grade-in');
+  const s = subjectById(ui.subjectId);
+  if (!input || !s) return;
+  const n = parseNum(input.value);
+  s.grades[Number(input.dataset.i)] = n == null ? null : clamp(n, 0, 100);
+  const avg = average(s.grades), out = $('#subjAvg');
+  out.textContent = avg != null ? fmtGrade(avg) : '—';
+  out.className = avg != null ? gradeClass(avg, s.grades) : '';
+  save();
+  renderMaterias();
+});
+subjBody.addEventListener('click', (e) => {
+  const s = subjectById(ui.subjectId);
+  if (!s) return;
+  if (e.target.closest('[data-act="add-exam"]')) return openExamForm(null);
+  if (e.target.closest('[data-act="add-rem"]')) return openReminderForm(null);
+  const exam = e.target.closest('[data-exam]');
+  if (exam) return openExamForm(s.exams.find((x) => x.id === exam.dataset.exam));
+  const rem = e.target.closest('[data-rem]');
+  if (rem) openReminderForm(s.reminders.find((x) => x.id === rem.dataset.rem));
+});
+$('#subjClose').addEventListener('click', closeSubject);
+$('#subjDelete').addEventListener('click', () => {
+  const id = ui.subjectId;
+  closeSubject();
+  setTimeout(() => removeSubject(id), 220);
+});
+sheetDrag(subjSheet, subjHero, closeSubject);
+
+// Enlace para crear el evento en Google Calendar (ahí sí suena una alarma en el teléfono)
+function gcalUrl(title, date, time, details) {
+  const d = date.replace(/-/g, '');
+  let dates;
+  if (time) {
+    const start = toMin(time), end = Math.min(start + 60, 23 * 60 + 59);
+    dates = `${d}T${time.replace(':', '')}00/${d}T${fromMin(end).replace(':', '')}00`;
+  } else dates = `${d}/${addDaysISO(date, 1).replace(/-/g, '')}`;
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${dates}&details=${encodeURIComponent(details)}`;
+}
+
+function openExamForm(exam) {
+  const s = subjectById(ui.subjectId);
+  if (!s) return;
+  const e = exam || { title: 'Examen', date: addDaysISO(todayISO(), 7), time: '', remind: 1 };
+  let remind = e.remind;
+  miniTitle.textContent = exam ? 'Editar examen' : 'Nuevo examen';
+  miniBody.innerHTML = `
+    <label class="mini-field"><span>Nombre</span><input class="input" name="title" value="${esc(e.title)}" maxlength="40" enterkeyhint="done"></label>
+    <div class="time-row">
+      <label><span>Fecha</span><input class="input" type="date" name="date" value="${e.date}"></label>
+      <label><span>Hora</span><input class="input" type="time" name="time" value="${e.time || ''}"></label>
+    </div>
+    <p class="opt-label">Avisarme en la app</p>
+    <div class="opt-row">${REMIND_OPTS.map(([v, l]) => `<button type="button" class="opt${v === remind ? ' active' : ''}" data-val="${v}">${l}</button>`).join('')}</div>
+    <button type="button" class="link-btn" data-act="gcal">${ICON.cal}Agregar a Google Calendar</button>
+    <div class="d-actions">
+      ${exam ? `<button class="btn-soft danger" type="button" data-act="del">${ICON.trash}Quitar</button>` : ''}
+      <button class="btn-primary" type="button" data-act="ok">Guardar</button>
+    </div>`;
+  const field = (n) => miniBody.querySelector(`[name="${n}"]`);
+  miniBody.onclick = (ev) => {
+    const opt = ev.target.closest('.opt');
+    if (opt) {
+      remind = Number(opt.dataset.val);
+      for (const o of opt.parentElement.children) o.classList.toggle('active', o === opt);
+      haptic(6);
+      return;
+    }
+    const act = ev.target.closest('[data-act]')?.dataset.act;
+    if (act === 'gcal') {
+      const title = `${field('title').value.trim() || 'Examen'} · ${s.name}`;
+      window.open(gcalUrl(title, field('date').value || todayISO(), field('time').value, 'Desde Tareitas 🌸'), '_blank', 'noopener');
+    } else if (act === 'ok') {
+      if (!field('date').value) return shake(field('date'));
+      const data = { title: field('title').value.trim() || 'Examen', date: field('date').value, time: field('time').value, remind };
+      if (exam) Object.assign(exam, data);
+      else s.exams.push({ id: uid(), ...data });
+      haptic(10);
+      closeMini();
+      afterSubjectDetail();
+    } else if (act === 'del') {
+      const idx = s.exams.indexOf(exam);
+      s.exams.splice(idx, 1);
+      closeMini();
+      afterSubjectDetail();
+      toast('Examen quitado', 'Deshacer', () => { s.exams.splice(idx, 0, exam); afterSubjectDetail(); });
+    }
+  };
+  openMini();
+}
+
+function openReminderForm(rem) {
+  const s = subjectById(ui.subjectId);
+  if (!s) return;
+  const r = rem || { text: '', date: addDaysISO(todayISO(), 1), time: '' };
+  miniTitle.textContent = rem ? 'Editar recordatorio' : 'Nuevo recordatorio';
+  miniBody.innerHTML = `
+    <label class="mini-field"><span>¿Qué hay que recordar?</span><input class="input" name="text" value="${esc(r.text)}" placeholder="Ej. llevar la bata" maxlength="60" enterkeyhint="done"></label>
+    <div class="time-row">
+      <label><span>Fecha</span><input class="input" type="date" name="date" value="${r.date}"></label>
+      <label><span>Hora</span><input class="input" type="time" name="time" value="${r.time || ''}"></label>
+    </div>
+    <p class="mini-hint">Aparece en la pantalla principal desde un día antes.</p>
+    <div class="d-actions">
+      ${rem ? `<button class="btn-soft danger" type="button" data-act="del">${ICON.trash}Quitar</button>` : ''}
+      <button class="btn-primary" type="button" data-act="ok">Guardar</button>
+    </div>`;
+  const field = (n) => miniBody.querySelector(`[name="${n}"]`);
+  miniBody.onclick = (ev) => {
+    const act = ev.target.closest('[data-act]')?.dataset.act;
+    if (act === 'ok') {
+      const text = field('text').value.trim();
+      if (!text) return shake(field('text'));
+      if (!field('date').value) return shake(field('date'));
+      const data = { text, date: field('date').value, time: field('time').value };
+      if (rem) Object.assign(rem, data);
+      else s.reminders.push({ id: uid(), ...data });
+      haptic(10);
+      closeMini();
+      afterSubjectDetail();
+    } else if (act === 'del') {
+      const idx = s.reminders.indexOf(rem);
+      s.reminders.splice(idx, 1);
+      closeMini();
+      afterSubjectDetail();
+      toast('Recordatorio quitado', 'Deshacer', () => { s.reminders.splice(idx, 0, rem); afterSubjectDetail(); });
+    }
+  };
+  openMini();
+}
+
+function afterSubjectDetail() {
+  save();
+  if (subjSheet.isOpen) fillSubject();
+  renderMaterias();
+  renderHeroNote();
+}
+
+/* ───────────── Hoja pequeña: filtros, elegir materia, editar hora, exámenes ───────────── */
 
 const miniSheet = createSheet($('#miniSheet'), scrim2);
 const miniTitle = $('#miniTitle'), miniBody = $('#miniBody');
@@ -1183,19 +1962,19 @@ function openPicker(slotId, day) {
   miniTitle.textContent = `${cap(WEEKDAYS[day])} · ${fmtTime(slot.start)}`;
   miniBody.innerHTML = `
     <div class="pick-list">
-      ${S.subjects.filter((s) => s.name.trim()).map((s) => `<button type="button" class="pick${s.id === current ? ' active' : ''}" data-id="${s.id}" style="--c:${s.color}">${esc(s.name)}</button>`).join('')}
+      ${state.subjects.filter((s) => s.name.trim()).map((s) => `<button type="button" class="pick${s.id === current ? ' active' : ''}" data-id="${s.id}" style="--c:${s.color}">${esc(s.name)}</button>`).join('')}
       <button type="button" class="pick pick-free${current ? '' : ' active'}" data-id="">Libre</button>
     </div>
     <form class="pick-new" autocomplete="off">
       <input class="input" name="name" placeholder="Nueva materia" maxlength="40" enterkeyhint="done">
       <button class="round-btn" type="submit" aria-label="Agregar materia">${ICON.plus}</button>
     </form>`;
-  miniBody.querySelector('.pick-list').addEventListener('click', (e) => {
+  miniBody.onclick = (e) => {
     const pick = e.target.closest('.pick');
     if (!pick) return;
     closeMini();
     assignCell(key, pick.dataset.id || null);
-  });
+  };
   miniBody.querySelector('.pick-new').addEventListener('submit', (e) => {
     e.preventDefault();
     const input = e.currentTarget.elements.name, name = input.value.trim();
@@ -1234,19 +2013,21 @@ function openTimeEditor(slotId) {
       <button class="btn-primary" type="button" data-act="ok">Listo</button>
     </div>`;
   const [startIn, endIn] = miniBody.querySelectorAll('input');
-  miniBody.querySelector('[data-act="ok"]').addEventListener('click', () => {
-    if (!startIn.value || !endIn.value || toMin(endIn.value) <= toMin(startIn.value)) return shake(endIn);
-    slot.start = startIn.value;
-    slot.end = endIn.value;
-    save();
-    closeMini();
-    renderGrid();
-    updateSchSub();
-  });
-  miniBody.querySelector('[data-act="del"]').addEventListener('click', () => {
-    closeMini();
-    removeSlot(slotId);
-  });
+  miniBody.onclick = (e) => {
+    const act = e.target.closest('[data-act]')?.dataset.act;
+    if (act === 'ok') {
+      if (!startIn.value || !endIn.value || toMin(endIn.value) <= toMin(startIn.value)) return shake(endIn);
+      slot.start = startIn.value;
+      slot.end = endIn.value;
+      save();
+      closeMini();
+      renderGrid();
+      updateSchSub();
+    } else if (act === 'del') {
+      closeMini();
+      removeSlot(slotId);
+    }
+  };
   openMini();
 }
 
@@ -1275,23 +2056,27 @@ document.addEventListener('keydown', (e) => {
   if (e.target.closest?.('input, textarea') || nav.stack.length) return;
   if (e.key === 'n') openAdd(null);
   if (e.key === 'h') openSchedule();
+  if (e.key === 'm') openMaterias();
 });
 
 /* ───────────── Inicio ───────────── */
 
 function intro() {
   if (reduceMotion) return;
-  const items = [...$('#hero').children, ...[...taskList.children].slice(0, 8)];
+  const items = [...$('#hero').children, $('.tabs-row'), ...[...taskList.children].slice(0, 8)];
   items.forEach((el, i) => {
-    el.animate([{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: 750, delay: 80 + i * 60, easing: EASE, fill: 'backwards' });
+    el.animate([{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: 750, delay: 80 + i * 55, easing: EASE, fill: 'backwards' });
   });
 }
 
 function init() {
-  updateHeader(); // también deja dibujado el horario
+  setSeg(tabsEl, ui.tab);
+  updateFilterBtn();
+  updateHeader(); // también deja dibujado el horario y los avisos
   renderDayToggles();
   renderSubjects();
-  renderTasks();
+  renderMaterias();
+  renderList();
   intro();
   setInterval(updateHeader, 20000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) updateHeader(); });
