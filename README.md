@@ -37,10 +37,15 @@ También funciona con el trackpad (dos dedos) y con atajos: `n` nueva tarea · `
 | Círculo de la tarjeta | Tocar | Marcar como hecha |
 | Borde izquierdo, saludo o espacio vacío | Deslizar a la derecha | Horario (también el botón 📅) |
 | Horario | Deslizar a la izquierda | Volver (también el botón de lista) |
+| Borde derecho o cualquier parte | Deslizar a la izquierda | Materias (también el botón 📚) |
+| Materias | Deslizar a la derecha | Volver |
+| Pestañas de arriba | Tocar | Tareas / Materiales / Proyectos (el botón de al lado ordena y filtra) |
 | Título del horario | Jalar hacia abajo | Editar horario (también el lápiz; ✓ para terminar) |
 | Parte de arriba de una hoja | Deslizar hacia abajo | Cerrarla |
 
-En Android, el gesto/botón **atrás** cierra lo que esté abierto. En la pantalla principal, **atrás abre el horario**: en Samsung con navegación por gestos, deslizar desde el borde izquierdo es "atrás", así que el gesto funciona igual.
+En Android, el gesto/botón **atrás** cierra lo que esté abierto. En la pantalla principal avisa "Desliza otra vez para salir" y el siguiente sale de la app. En Samsung con navegación por gestos, los bordes son "atrás": para el horario o materias desliza empezando un poco hacia adentro (por ejemplo, sobre el saludo).
+
+Los exámenes avisan dentro de la app; para una alarma real en el teléfono usa "Agregar a Google Calendar" en el examen.
 
 ## Instalarla en el Samsung
 
